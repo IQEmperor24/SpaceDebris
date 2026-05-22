@@ -168,7 +168,7 @@ async function spaceTrackGet<T>(queryPath: string): Promise<T> {
  * Newest epoch first; capped by `limit`.
  */
 export async function fetchTLEs(limit: number): Promise<SpaceTrackTLE[]> {
-  const safeLimit = Math.max(1, Math.min(limit, 5000));
+  const safeLimit = Math.max(1, Math.min(limit, 10000));
   // `gp` (General Perturbations) is Space-Track's current recommended
   // class — returns one latest element set per object, no ORDINAL needed.
   const path = `class/gp/orderby/EPOCH%20desc/limit/${safeLimit}/format/json`;

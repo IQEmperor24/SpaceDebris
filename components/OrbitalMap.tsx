@@ -19,7 +19,7 @@ import type { SpaceTrackTLE } from "@/lib/spacetrack";
    - cleanup: cancelAnimationFrame + controls.dispose + renderer.dispose
    ============================================================ */
 
-const DEBRIS_LIMIT = 800;
+const DEBRIS_LIMIT = 2000;
 const EARTH_RADIUS_KM = 6371;
 
 type Zone = "ALL" | "LEO" | "MEO" | "GEO";
@@ -155,7 +155,8 @@ export default function OrbitalMap() {
 
   const [zone, setZone] = useState<Zone>("ALL");
   const [fps, setFps] = useState(0);
-  const [count, setCount] = useState(0);
+  const [count, setCount] = useState(0); // currently filtered/visible count
+  const [total, setTotal] = useState(0); // total propagated objects (does not change after load)
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tooltip, setTooltip] = useState<TooltipState | null>(null);
@@ -188,6 +189,7 @@ export default function OrbitalMap() {
     points.geometry.dispose();
     points.geometry = geo;
     filteredDataRef.current = filtered;
+    setCount(filtered.length); // keep counter in sync with the active filter
   }, []);
 
   // ---- one-time scene setup ----
@@ -387,8 +389,8 @@ export default function OrbitalMap() {
         }
 
         objectDataRef.current = built;
-        applyFilter(zoneRef.current);
-        setCount(built.length);
+        setTotal(built.length);
+        applyFilter(zoneRef.current); // also sets count for the active filter
         setLoading(false);
       } catch (err) {
         if (!disposed) {
@@ -452,7 +454,10 @@ export default function OrbitalMap() {
         <span>
           <span className="text-safe">{fps}</span> FPS
         </span>
-        <span>{count} objects</span>
+        <span>
+          <span className="text-text-primary">{count}</span>
+          <span className="text-text-muted"> / {total}</span> objects
+        </span>
       </div>
 
       {/* Loading / error overlays */}
