@@ -58,8 +58,8 @@ and recommends avoidance maneuvers using live Space-Track.org data."
 ## Tech Stack
 - Next.js 14 App Router (same as SkinAI — Aayush knows this cold)
 - Tailwind CSS
-- Anthropic claude-sonnet-4-20250514 via API (same as SkinAI)
-  *** CRITICAL: The model string is ALWAYS claude-sonnet-4-20250514 ***
+- Anthropic claude-sonnet-4-6 via API (same as SkinAI)
+  *** CRITICAL: The model string is ALWAYS claude-sonnet-4-6 ***
   *** NEVER use claude-sonnet-4-6 or any other string ***
 - Three.js for 3D orbital visualization (replaces D3.js)
 - satellite.js for real TLE → ECI → ECF position propagation
@@ -324,7 +324,7 @@ Hours 23-24: Pitch prep + sleep (set alarm — do not skip sleep)
 2. Run npm run build before every single deploy — catch errors locally first
 3. All prompts live in lib/prompts.ts — never inline in API routes
 4. next.config.js MUST stay as .js NOT .ts — never rename this file
-5. Model string is ALWAYS claude-sonnet-4-20250514 — never change
+5. Model string is ALWAYS claude-sonnet-4-6 — never change
 6. temperature: 0 on ALL Anthropic API calls — never change
 7. Use Claude Code for all file generation
 8. Never let Claude Code run terminal commands — run them yourself
