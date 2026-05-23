@@ -119,7 +119,7 @@ const POINT_FRAGMENT_SHADER = `
     vec2 uv = gl_PointCoord - vec2(0.5);
     float d = length(uv);
     if (d > 0.5) discard;
-    float alpha = smoothstep(0.5, 0.0, d); // soft additive glow
+    float alpha = smoothstep(0.5, 0.3, d); // soft additive glow
     gl_FragColor = vec4(vColor, alpha);
   }
 `;
@@ -282,7 +282,7 @@ export default function OrbitalMap() {
 
     // Debris points — ONE draw call, custom glow shader
     const pointsMat = new THREE.ShaderMaterial({
-      uniforms: { uSize: { value: 7.0 } },
+      uniforms: { uSize: { value: 2.0 } },
       vertexShader: POINT_VERTEX_SHADER,
       fragmentShader: POINT_FRAGMENT_SHADER,
       transparent: true,
