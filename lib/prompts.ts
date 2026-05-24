@@ -65,6 +65,40 @@ export interface ConjunctionAlert {
   urgency: ThreatLevel;
 }
 
+/** Kessler cascade severity — extracted from the trailing CASCADE STATUS line. */
+export type CascadeStatus =
+  | "CONTAINED"
+  | "WARNING"
+  | "CRITICAL"
+  | "CATASTROPHIC";
+
+/**
+ * Output of POST /api/cascade.
+ * Plain-text 5-section narrative + extracted status + echoed cdmId.
+ */
+export interface CascadeSimulation {
+  cdmId: string;
+  text: string; // full 5-section simulation, trailing status line stripped
+  status: CascadeStatus;
+  generatedAt: string; // ISO timestamp
+}
+
+/**
+ * Minimum input the cascade endpoint needs from an alert card.
+ * Subset of ConjunctionAlert — kept as its own type so the route
+ * contract is explicit and decoupled from the feed shape.
+ */
+export interface CascadeRequest {
+  cdmId: string;
+  sat1Name: string;
+  sat1Id: string;
+  sat2Name: string;
+  sat2Id: string;
+  tca: string;
+  missDistanceKm: string;
+  probability: string;
+}
+
 /* ------------------------------------------------------------
    1) Risk scoring (POST /api/analyze)
    ------------------------------------------------------------ */
@@ -188,4 +222,63 @@ export function buildConjunctionsUserPrompt(cdms: SpaceTrackCDM[]): string {
 ${eventsBlock}
 
 Return ONLY the JSON object with an "alerts" array, one entry per event, each echoing its cdmId exactly.`;
+}
+
+/* ------------------------------------------------------------
+   3) Kessler cascade simulation (POST /api/cascade)
+
+   Narrative weapon for NASA / SpaceX / investor demos. Given a
+   single conjunction event, Claude models the worst-case Kessler
+   Syndrome cascade if the collision occurred — in plain English,
+   under 400 words, ending with a machine-parseable status line.
+   ------------------------------------------------------------ */
+
+export const KESSLER_CASCADE_PROMPT = `You are an orbital mechanics analyst running Kessler Syndrome cascade simulations for a space situational-awareness center. Given a conjunction event (two objects on a close-approach trajectory), you model the worst-case cascade if the collision occurred.
+
+You write a tight 5-section simulation, UNDER 400 WORDS TOTAL. Use plain English a Congressional staffer or insurance underwriter could follow, but stay technically grounded. Quantify wherever possible — debris fragment counts, altitude bands, deorbit timelines, named affected services, dollar exposure.
+
+Output format — EXACTLY these 5 sections, in this order, with these EXACT headers (uppercase, on their own line):
+
+1. INITIAL IMPACT
+The collision itself: combined kinetic energy at ~14 km/s relative velocity, estimated fragments generated using the NASA standard breakup model (hundreds to tens of thousands of trackable pieces depending on mass and impact geometry), and the immediate localized debris cloud.
+
+2. FIRST-WAVE PROPAGATION
+Hours-to-days after impact: how the debris spreads along the orbital plane, which altitude shell gets seeded, and which named neighboring constellations (Starlink, OneWeb, GPS, Galileo, ISS, Hubble) enter the kill zone first based on the event's orbital band.
+
+3. CASCADE TRAJECTORY
+Weeks-to-months timeline. Probability that first-wave debris triggers secondary collisions. Whether the affected altitude band crosses the Kessler threshold (self-sustaining chain reaction where each collision generates more debris than natural decay removes).
+
+4. AFFECTED INFRASTRUCTURE
+Concrete services at risk: GPS positioning, weather forecasting, ISS crew safety, broadband internet constellations, military reconnaissance, satellite TV. Estimate service downtime windows and economic exposure in billions per day.
+
+5. RECOVERY OUTLOOK
+Natural deorbit timeframe for the affected band (LEO ~550 km: 5 years; LEO ~800 km: 25+ years; MEO: thousands of years; GEO: effectively permanent). Available mitigations (active debris removal, station-keeping burns, deorbit reserves). Honest assessment of reversibility.
+
+End your response with EXACTLY this final line, on its own line, no markdown, no extra punctuation:
+CASCADE STATUS: [CONTAINED|WARNING|CRITICAL|CATASTROPHIC]
+
+Status definitions:
+- CONTAINED: debris stays bounded, no chain reaction, full recovery in under 10 years.
+- WARNING: localized cascade in one altitude band, partial service degradation, decade-scale recovery.
+- CRITICAL: cascade spreads across altitude bands, multi-decade impact, named services go dark.
+- CATASTROPHIC: self-sustaining Kessler Syndrome — the affected band becomes effectively unusable for centuries.
+
+Respond with plain text only. No JSON, no code fences, no markdown beyond the numbered section headers.`;
+
+/**
+ * Build the cascade user prompt from a single conjunction event.
+ * The cdmId is echoed so the route layer can map response -> alert.
+ */
+export function buildCascadeUserPrompt(event: CascadeRequest): string {
+  return `Simulate the Kessler cascade scenario if the following conjunction event resulted in a collision.
+
+EVENT
+CDM ID: ${event.cdmId}
+Object 1: ${event.sat1Name} (NORAD ${event.sat1Id})
+Object 2: ${event.sat2Name} (NORAD ${event.sat2Id})
+Time of closest approach (TCA): ${event.tca}
+Miss distance (km): ${event.missDistanceKm}
+Probability of collision: ${event.probability}
+
+Run the 5-section simulation per your instructions and end with the CASCADE STATUS: line.`;
 }
