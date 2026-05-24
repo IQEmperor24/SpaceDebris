@@ -1,456 +1,445 @@
-SpaceDebris — CLAUDE.md
-Holy Grail Context File for Claude Code (Opus)
-READ THIS ENTIRELY BEFORE RESPONDING TO ANY PROMPT
-Last updated: End of Session 3 — Post Houston Hackathon
+# SpaceDebris — CLAUDE.md
+# Holy Grail Context File for Claude Code (Opus)
+# READ THIS ENTIRELY BEFORE RESPONDING TO ANY PROMPT
+# Last updated: End of Session 4 — Post Houston Hackathon
+# Phases 1, 2, 3 COMPLETE
 
-OPERATOR NOTE — CRITICAL
+---
+
+## OPERATOR NOTE — CRITICAL
 Aayush is a Waterloo CS grad building SpaceDebris solo.
-This is now a POST-HACKATHON production build.
-We are building potentially trillion-dollar space
-infrastructure. Every decision matters.
+This is a POST-HACKATHON production build.
+We are building potentially trillion-dollar space infrastructure.
+Every decision matters.
 As his AI pair programmer, you MUST:
+- Be EXTREMELY verbose in every response
+- Never assume he remembers something — restate context every time
+- Call out potential mistakes BEFORE he makes them
+- Never give partial files — always give the COMPLETE file, top to bottom
+- Never say "rest of file stays the same"
+- Double-check every file for typos, missing imports, broken references
+- Remind him of the deploy sequence every single time he is about to deploy
+- Flag any command that could break the build BEFORE he runs it
+- For ALL debug prompts: "Only look at [FILE]. Do not read any other files."
+- Never run terminal commands yourself — Aayush runs ALL commands
+- After EVERY feature: npm run build must be clean before git push
 
-Be EXTREMELY verbose in every response
-Never assume he remembers something — restate context every time
-Call out potential mistakes BEFORE he makes them
-Never give partial files — always give the COMPLETE file, top to bottom
-Never say "rest of file stays the same"
-Double-check every file for typos, missing imports, broken references
-Remind him of the deploy sequence every single time he is about to deploy
-Flag any command that could break the build BEFORE he runs it
-For ALL debug prompts: "Only look at [FILE]. Do not read any other files."
-Never run terminal commands yourself — Aayush runs ALL commands
-After EVERY feature: npm run build must be clean before git push
+---
 
-
-Project Vision
-SpaceDebris — AI-powered real-time space debris collision
-risk dashboard. Started as 24-hour Houston Hackathon build.
+## Project Vision
+SpaceDebris — AI-powered real-time space debris collision risk dashboard.
+Started as 24-hour Houston Hackathon build.
 Now being developed into critical space infrastructure.
-The Pitch
-"46,000 objects are tracked in Earth orbit. SpaceX performed
-300,000 collision avoidance maneuvers in 2025 — a 50% increase
-over 2024. One collision can trigger Kessler Syndrome — a chain
-reaction that makes all orbits permanently unusable, killing GPS,
-internet, and weather satellites forever. SpaceDebris is the AI
-infrastructure layer that monitors, predicts, and prevents that."
-Market Opportunity
+Total development cost so far: ~$24 USD across 4 sessions.
 
-SpaceX spends ~$300M/year on collision avoidance maneuvers
-Global satellite insurance market: $1B/year
-Space economy projected $1 trillion by 2040 (Goldman Sachs)
-FCC requires biannual safety reports from all operators
-No standardized AI tool exists for conjunction risk assessment
+### The Pitch
+"46,000 objects are tracked in Earth orbit. SpaceX performed 300,000
+collision avoidance maneuvers in 2025 — a 50% increase over 2024.
+One collision can trigger Kessler Syndrome — a chain reaction that
+makes all orbits permanently unusable, killing GPS, internet, and
+weather satellites forever. SpaceDebris is the AI infrastructure
+layer that monitors, predicts, and prevents that."
 
-Key Connection
+### Market Opportunity
+- SpaceX spends ~$300M/year on collision avoidance maneuvers
+- Global satellite insurance market: $1B/year
+- Space economy projected $1 trillion by 2040 (Goldman Sachs)
+- FCC requires biannual safety reports from all operators
+- No standardized AI tool exists for conjunction risk assessment
+
+### Key Connection
 NASA-connected judge at HackHCC Houston sent LinkedIn
 connection request after seeing SpaceDebris demo.
-Introduction to NASA pending. Follow up actively.
+LinkedIn message sent. Awaiting response.
+When he responds — prepare NASA demo version immediately.
 
-Live Deployment
+---
 
-URL: https://space-debris-two.vercel.app
-Vercel Authentication: DISABLED (fully public)
-GitHub: https://github.com/IQEmperor24/SpaceDebris.git
-Branch: main
-Last commit: 9d59a4d — "feat: crisp debris dots uSize 2.0"
-Auto-deploys on every git push origin main
-vercel --prod CLI NOT needed — push to GitHub = auto deploy
+## Live Deployment
+- URL: https://space-debris-two.vercel.app
+- Vercel Authentication: DISABLED (fully public)
+- GitHub: https://github.com/IQEmperor24/SpaceDebris.git
+- Branch: main
+- Auto-deploys on every git push origin main
+- vercel --prod CLI NOT needed — push to GitHub = auto deploy
+- ANTHROPIC_API_KEY: Aayush's OWN account (not aunt's)
+- Anthropic credits remaining: ~$19.86
 
+---
 
-Tech Stack
+## Tech Stack
+- Next.js 14.2.3 App Router
+- TypeScript (strict mode ON)
+- Tailwind CSS
+- Three.js (3D orbital visualization)
+- satellite.js (SGP4 TLE propagation)
+- Anthropic Claude API — model: claude-sonnet-4-6
+- Space-Track.org API (live TLE + CDM data)
+- Vercel (deployment, Hobby plan)
 
-Next.js 14.2.3 App Router
-TypeScript (strict mode ON)
-Tailwind CSS
-Three.js (3D orbital visualization)
-satellite.js (SGP4 TLE propagation)
-Anthropic Claude API — model: claude-sonnet-4-6
-Space-Track.org API (live TLE + CDM data)
-Vercel (deployment, Hobby plan)
+---
 
+## Current Status — FULLY WORKING (Session 4)
 
-Current Status — What Is Working RIGHT NOW
-FULLY WORKING (as of Session 3)
+### Core Features (Hackathon Sessions 1-3)
+- App boots cleanly at localhost:3000
+- npm run build — CLEAN, zero errors
+- 3D Earth globe renders at 47-60 FPS
+- ALL/LEO/MEO/GEO filter buttons working
+- Object counter shows filtered/total (1,989/1,989)
+- ~1,989 debris objects from Space-Track gp class
+- Debris dots: distinct individual points (uSize 2.0)
+- Deployed live at space-debris-two.vercel.app
+- Vercel public access enabled
+- vercel.json generated
+- GitHub auto-deploy connected
 
-App boots cleanly at localhost:3000
-npm run build — CLEAN, zero errors
-3D Earth globe renders at 47-60 FPS
-Background stars render correctly
-ALL/LEO/MEO/GEO filter buttons working correctly
-Object counter shows filtered/total (e.g. "1612 / 1986 objects")
-~1,986 debris objects loading from Space-Track gp class
-Debris dots render as distinct individual points — FIXED SESSION 3
-AI Risk Scorer — all 5 chips working
-ISS chip — returns real AI risk score
-Collision Alert Feed — FULLY WORKING WITH REAL DATA
+### Phase 1 — Kessler Cascade Simulator ✅ COMPLETE
+- SIMULATE CASCADE button on MEDIUM/HIGH/CRITICAL alerts
+- Calls /api/cascade POST endpoint
+- 5-section cascade simulation from Claude AI
+- CASCADE STATUS badge: CONTAINED/WARNING/CRITICAL/CATASTROPHIC
+- Cache keyed by composite key (cdmId+sat1Id+sat2Id+tca+miss+prob)
+- Each conjunction gets unique simulation
+- RE-RUN CASCADE SIMULATION button
+- 5-minute Map cache
 
-Fetches real CDMs from Space-Track.org
-Claude summarizes in plain English
-Threat badges (LOW/MEDIUM/HIGH/CRITICAL)
-Auto-refresh countdown timer working
-TCA, miss distance, probability displaying correctly
+### Phase 2 — Maneuver Recommendation Engine ✅ COMPLETE
+- GET MANEUVER PLAN button on MEDIUM/HIGH/CRITICAL risk scores
+- Calls /api/maneuver POST endpoint
+- 6-section maneuver plan from Claude AI
+- Real Tsiolkovsky rocket equation for fuel estimates
+- Isp 220s, 1000kg satellite mass assumption
+- RECOMMENDATION badge: MONITOR/PREPARE/EXECUTE/EMERGENCY
+- EMERGENCY badge pulses red
+- Stale plan clears on new satellite search
+- 2-minute Map cache
+- analyze route now passes TLE data to frontend
 
+### Phase 3 — Fleet Intelligence Dashboard ✅ COMPLETE
+- New FleetDashboard component below existing 3 panels
+- 4 stat cards: total objects, active conjunctions,
+  high priority, critical (pulses if > 0)
+- 3 orbital shell bars: LEO/MEO/GEO
+  Status: NOMINAL/ELEVATED/CRITICAL
+  LEO currently ELEVATED (1,815 objects)
+- Top 3 threats with severity badges + AI reasoning
+- Executive Brief — NASA Administrator level
+- Risk trend: IMPROVING/STABLE/DETERIORATING
+- 3 recommended actions (specific, WHO/WHAT/WHICH)
+- 120s refresh loop + 1s countdown ticker
+- 2-minute Map cache (single key "fleet")
+- Concurrent Promise.all for TLE + conjunction fetch
+- TREND indicator top right with color coding
 
-Deployed live at space-debris-two.vercel.app
-Vercel public access enabled (no login required)
-vercel.json generated (function timeout config)
-GitHub connected to Vercel (auto-deploy on push)
-Devpost submitted to HackHCC: Code Runners
-Demo video submitted
+### AI Risk Scorer ✅ WORKING
+- All 5 chips working (ISS, HUBBLE, STARLINK-1234, 25544, NOAA 19)
+- Returns real AI risk score with 3 bars
+- Collision Probability / Debris Density / Orbital Stability
 
-KNOWN ISSUES (acceptable, do not fix now)
+### Collision Alert Feed ✅ WORKING
+- Real CDMs from Space-Track.org
+- Claude summarizes in plain English
+- Threat badges (LOW/MEDIUM/HIGH/CRITICAL)
+- 60s auto-refresh countdown
+- SIMULATE CASCADE button on MEDIUM/HIGH/CRITICAL
 
-Mobile rendering: dots not fully visible on phones
-(WebGL shader limitation — judges demo on desktop)
-Object count ~1,986 not 2,000 — Space-Track drops
-objects with invalid/stale TLEs. Normal, not a bug.
-LEO appears as dense glowing shell (scientifically
-correct — 1,811 objects packed tightly in LEO band)
+---
 
-FEATURES TO BUILD (Session 3+)
-Phase 1: Kessler Cascade Simulator — BUILD NEXT
-Phase 2: Maneuver Recommendation Engine
-Phase 3: Fleet Intelligence Dashboard
-Phase 4: Operator Alert Network
-Phase 5: Predictive Conjunction Engine
-Phase 6: Autonomous Satellite Integration (long term)
-
-Complete File Structure
+## Complete File Structure
 C:\Users\user\SpaceDebris\
+- .env.local                    DONE — Real API keys (NEVER commit)
+- .gitignore                    DONE — Covers .env.local + node_modules
+- CLAUDE.md                     DONE — This file
+- vercel.json                   DONE — Function timeout config
+- next.config.js                DONE — .js NOT .ts
+- tsconfig.json                 DONE — Strict mode, @/* alias
+- tailwind.config.js            DONE — Space theme
+- postcss.config.js             DONE — Tailwind pipeline
+- package.json                  DONE — All deps
+- app/
+  - globals.css                 DONE — Space theme + animations
+  - layout.tsx                  DONE — Syne + Syne Mono fonts
+  - page.tsx                    DONE — 4-panel dashboard (FleetDashboard added)
+  - api/
+    - debris/route.ts           DONE — TLE fetch, 10-min cache
+    - analyze/route.ts          DONE — Claude risk scoring + TLE passthrough
+    - conjunctions/route.ts     DONE — CDM alerts, 60s cache
+    - cascade/route.ts          DONE — Phase 1 Kessler simulation
+    - maneuver/route.ts         DONE — Phase 2 maneuver recommendations
+    - fleet/route.ts            DONE — Phase 3 fleet intelligence
+- lib/
+  - anthropic.ts                DONE — Model: claude-sonnet-4-6
+  - spacetrack.ts               DONE — gp class, auth working
+  - prompts.ts                  DONE — ALL prompts + types (DO NOT INLINE)
+- components/
+  - OrbitalMap.tsx              DONE — Three.js 3D, uSize 2.0
+  - RiskScorer.tsx              DONE — Risk scoring + maneuver plan
+  - AlertFeed.tsx               DONE — Conjunction feed + cascade sim
+  - FleetDashboard.tsx          DONE — Phase 3 fleet intelligence
 
-.env.local                    DONE — Real API keys (NEVER commit)
-.gitignore                    DONE — Covers .env.local + node_modules
-CLAUDE.md                     DONE — This file — Claude Code rulebook
-vercel.json                   DONE — Function timeout config
-next.config.js                DONE — Stays as .js NOT .ts — never rename
-tsconfig.json                 DONE — Strict mode, @/* alias
-tailwind.config.js            DONE — Space theme colors
-postcss.config.js             DONE — Tailwind pipeline
-package.json                  DONE — All deps, @types/satellite.js REMOVED
-package-lock.json             DONE — Do not edit manually
-node_modules/                 DONE — Installed, gitignored
-app/
+---
 
-globals.css                 DONE — Full space theme + animations
-layout.tsx                  DONE — Syne + Syne Mono fonts
-page.tsx                    DONE — 3-panel dashboard, dynamic imports
-api/
-
-debris/route.ts           DONE — TLE fetch, 10-min cache
-analyze/route.ts          DONE — Claude risk scoring
-conjunctions/route.ts     DONE — CDM alerts, 60s cache — WORKING
-
-
-
-
-lib/
-
-anthropic.ts                DONE — Model: claude-sonnet-4-6
-spacetrack.ts               DONE — gp class, auth working
-prompts.ts                  DONE — All Claude prompts + shared types
-
-
-components/
-
-OrbitalMap.tsx              DONE — Three.js 3D — uSize 2.0 FIXED
-RiskScorer.tsx              DONE — AI risk scoring UI
-AlertFeed.tsx               DONE — Live conjunction feed — WORKING
-
-
-
-
-Environment Variables — .env.local
-ANTHROPIC_API_KEY=<from SkinAI project>
+## Environment Variables — .env.local
+ANTHROPIC_API_KEY=Aayush's own key (created Session 4)
 SPACETRACK_USERNAME=a2khazan@uwaterloo.ca
-SPACETRACK_PASSWORD=<set during Space-Track registration>
-File: C:\Users\user\SpaceDebris.env.local
-NEVER commit this file. Verify with git status before push.
-Same 3 vars set in Vercel dashboard — Settings — Env Variables
+SPACETRACK_PASSWORD=set during Space-Track registration
 
-ALL Fixes Applied — Sessions 1, 2, 3
-Session 1 Fixes
+File: C:\Users\user\SpaceDebris\.env.local
+NEVER commit. Verify with git status before push.
+Same 3 vars in Vercel dashboard — Settings — Env Variables.
+ANTHROPIC_API_KEY was updated in BOTH .env.local AND Vercel Session 4.
 
-@types/satellite.js removed from package.json
-OrbitControls import changed to OrbitControls.js
-CLAUDE_MODEL changed to claude-sonnet-4-6
-fetchTLEs — removed ORDINAL/1 from URL path
-searchTLE — removed ORDINAL/1 from URL path
+---
 
-Session 2 Fixes
+## All Fixes Applied — Sessions 1-4
 
-lib/spacetrack.ts — changed tle_latest to gp class
-Root cause: tle_latest returns HTTP 404 (deprecated)
-gp is Space-Track's current standard TLE endpoint
-lib/spacetrack.ts — changed tle_latest to gp in searchTLE
-lib/spacetrack.ts — improved error message (full URL)
-lib/spacetrack.ts — diagnostic console.logs added then
-removed (confirmed auth working: HTTP 200, chocolatechip
-cookie valid)
-components/OrbitalMap.tsx — DEBRIS_LIMIT 800 to 2000
-Performance tested: 2000 = ~80-200ms load (acceptable)
-Do not increase beyond 2000 without performance testing
-components/OrbitalMap.tsx — counter fixed to show
-filtered/total (e.g. "1612 / 1986 objects")
-vercel.json — generated (function timeout config)
-.next cache — cleared once (rmdir /s /q .next)
+### Sessions 1-2 (Hackathon)
+1. @types/satellite.js removed
+2. OrbitControls import uses .js extension
+3. Model: claude-sonnet-4-6
+4. fetchTLEs — removed ORDINAL/1
+5. searchTLE — removed ORDINAL/1
+6. tle_latest → gp class (fetchTLEs + searchTLE)
+7. Diagnostic console.logs added then removed
+8. DEBRIS_LIMIT 800 → 2000
+9. Counter shows filtered/total
+10. vercel.json generated
 
-Session 3 Fixes
+### Session 3 (Shader Fix)
+11. uSize 7.0 → 2.0 (crisp dots)
+12. smoothstep(0.5, 0.0, d) → smoothstep(0.5, 0.3, d)
 
-components/OrbitalMap.tsx — shader values updated:
-uSize: 7.0 to 2.0 (smaller, crisper debris dots)
-smoothstep(0.5, 0.0, d) to smoothstep(0.5, 0.3, d)
-Result: distinct individual dots at 60 FPS
-Visual confirmed working on Vercel production
-DO NOT change shader values without visual testing
-on localhost first — blob rendering can return
+### Session 4 (Phases 1-3)
+13. Phase 1: cascade simulator built and deployed
+14. Phase 1 bug: cache key collision fixed
+    (composite key: cdmId+sat1Id+sat2Id+tca+miss+prob)
+15. Phase 2: maneuver recommendation engine built
+16. Phase 2: analyze route passes TLE to frontend
+17. Phase 3: fleet intelligence dashboard built
+18. ANTHROPIC_API_KEY switched to Aayush's own account
+    (aunt's key ran out of credits during testing)
 
+---
 
-Space-Track.org API — Critical Facts
+## Space-Track.org API — Critical Facts
+- Username: a2khazan@uwaterloo.ca
+- Cookie name: chocolatechip (correct — not a bug)
+- Cookie parse: setCookie.split(';')[0]
+- Rate limit: 30 req/min, 300/hr
+- TLE endpoint: class/gp/ (NOT tle_latest — returns 404)
+- CDM endpoint: class/cdm_public/ (working)
+- Returns 404 (not 401) when unauthenticated
 
-Username: a2khazan@uwaterloo.ca
-Auth: session cookie (valid ~50 min, auto-refreshed)
-Cookie name: chocolatechip (correct — not a bug)
-Cookie parse: setCookie.split(';')[0]
-Rate limit: 30 req/min, 300/hr
-Base URL: https://www.space-track.org
-Login: POST https://www.space-track.org/ajaxauth/login
-Query base: https://www.space-track.org/basicspacedata/query/
-TLE endpoint: class/gp/ (NOT tle_latest — returns 404)
-CDM endpoint: class/cdm_public/ (working, do not touch)
-Space-Track returns 404 (not 401) for unauthenticated requests
-Auth confirmed working: HTTP 200, chocolatechip cookie valid
+---
 
+## Three.js Architecture — DO NOT CHANGE WITHOUT TESTING
+- THREE.Points (one draw call)
+- Custom ShaderMaterial, additive blending
+- Log-scale altitude: scene_r = 1.0 + Math.log1p(altKm/2000)*1.4
+- OrbitControls from OrbitControls.js (with .js extension)
+- DEBRIS_LIMIT = 2000
+- uSize = 2.0 (DO NOT change without localhost visual test)
+- smoothstep(0.5, 0.3, d) — tight falloff
+- 2000 objects = ~80-200ms load (acceptable)
 
-Three.js Architecture — DO NOT CHANGE WITHOUT TESTING
+---
 
-THREE.Points (one draw call for all debris)
-Custom ShaderMaterial with additive blending + circular falloff
-Log-scale altitude: scene_r = 1.0 + Math.log1p(altKm/2000)*1.4
-ECI to ECF to Three.js: ECF.x to Three.x, ECF.z to Three.y, ECF.y to Three.-z
-OrbitControls from three/examples/jsm/controls/OrbitControls.js
-Full cleanup on unmount: cancelAnimationFrame + dispose()
-DEBRIS_LIMIT = 2000 (do not increase without perf testing)
-uSize = 2.0 (do not change without visual testing on localhost)
-smoothstep(0.5, 0.3, d) — tight falloff for distinct dots
-Propagation cost: ~40-100 microseconds per object on laptops
-2000 objects = ~80-200ms load freeze (acceptable)
-3000+ objects = visible stutter (do not go there)
+## Orbital Band Reference
+- LEO: 200-2,000km — 1,815 of 1,989 objects — ELEVATED
+- MEO: 2,000-35,786km — 42 objects — NOMINAL (GPS clusters)
+- GEO: exactly 35,786km — 143 objects — NOMINAL (equatorial ring)
 
+---
 
-Orbital Band Reference (for feature building)
+## Key Facts For Demo/Pitch
+- 46,000 objects tracked in Earth orbit
+- 69,000+ NORAD IDs assigned in history
+- 14,500-15,600 currently active satellites
+- SpaceX Starlink: 10,000+ satellites (65% of active)
+- SpaceX: 300,000 maneuvers in 2025 (50% YoY increase)
+- ~40 maneuvers per Starlink satellite per year
+- 500,000+ objects 1-10cm — untrackable kill zone
+- Source: SpaceX FCC filing Dec 2025, New Scientist Jan 23 2026
+- GEO debris: never deorbits (thousands of years)
+- LEO at 550km: ~5 years natural deorbit
 
-LEO: 200-2,000km — ISS, Starlink, most debris
-1,811 of 1,986 objects — densest band
-17,500 mph — paint fleck hits like bowling ball
-Kessler Syndrome starts here
-MEO: 2,000-35,786km — GPS, Galileo, GLONASS, BeiDou
-48 of 1,986 objects — GPS constellation clusters
-$1.4 trillion economic activity daily depends on MEO
-GEO: exactly 35,786km — weather, TV, military sats
-127 of 1,986 objects — equatorial ring
-Debris here NEVER deorbits (thousands of years)
-Finite slots — countries fight over them at UN
+---
 
+## Anthropic API
+- Model: claude-sonnet-4-6 (NEVER change)
+- temperature: 0 on ALL Claude calls
+- Cost: $3.00 input / $15.00 output per million tokens
+- Session 4 cost: $4.04 for Phases 1-3
+- Total project cost: ~$24 across all sessions
+- All prompts in lib/prompts.ts — NEVER inline
 
-Key Facts For Demo/Pitch
+## API Cost Per Feature
+- Risk score: ~$0.006
+- Cascade simulation: ~$0.008
+- Maneuver plan: ~$0.008
+- Fleet intelligence: ~$0.012
+- Conjunction summary (x10 per refresh): ~$0.04/refresh
 
-46,000 objects tracked in Earth orbit (not 27,000)
-69,000+ NORAD IDs assigned in history
-14,500-15,600 currently active satellites
-SpaceX Starlink: 10,000+ of active satellites (65%)
-SpaceX: 300,000 maneuvers in 2025 (50% increase over 2024)
-~40 maneuvers per Starlink satellite per year
-SpaceX maneuver threshold: 3 in 10 million (vs industry
-standard 1 in 10,000 — SpaceX is 300x more cautious)
-500,000+ objects 1-10cm — too small to track, big enough
-to destroy any satellite (untrackable kill zone)
-GEO debris deorbit time: thousands of years (never)
-LEO debris at 550km: ~5 years to deorbit naturally
-Source for 300K maneuvers: SpaceX FCC filing Dec 2025,
-reported by New Scientist Jan 23, 2026
+---
 
-
-Anthropic API
-
-Model: claude-sonnet-4-6 (always — never change)
-temperature: 0 on ALL Claude calls (deterministic)
-Cost: $3.00 input / $15.00 output per million tokens
-Per risk score call: ~$0.006
-API key will NOT burn out during normal usage
-All prompts live in lib/prompts.ts — never inline
-
-
-Deploy Sequence — EVERY TIME, IN ORDER
+## Deploy Sequence — EVERY TIME
 Run in second terminal — NEVER in Claude Code
-Never use --force on git push
-Vercel auto-deploys after push — no vercel --prod needed
+Never --force on git push
+
 npm run build
 git add .
-git commit -m "your message here"
+git commit -m "message"
 git push origin main
-Wait 60-90 seconds then verify space-debris-two.vercel.app
-Pre-Deploy Checklist
 
-npm run build clean (zero errors)
-.env.local NOT in git status
-node_modules NOT in git status
-Visual test on localhost before pushing
-All 3 Vercel env vars still set in dashboard
+Wait 60-90s → verify space-debris-two.vercel.app
 
+Pre-deploy checklist:
+1. npm run build clean
+2. .env.local NOT in git status
+3. node_modules NOT in git status
+4. Visual test localhost first
+5. Vercel env vars still set
 
-Critical Rules — NEVER VIOLATE
+---
 
-FULL FILES ONLY — never partial files or code snippets
-npm run build before every deploy
-All prompts in lib/prompts.ts — never inline in routes
-next.config.js stays as .js NOT .ts
-Model string is claude-sonnet-4-6
-temperature: 0 on all Claude API calls
-Never commit .env.local
-Never let Claude Code run terminal commands
-Never hardcode API keys
-For debug prompts: specify exact file, no others
-Never use --force on git push
-TLE endpoint is class/gp NOT class/tle_latest
-Test visually on localhost BEFORE pushing to Vercel
-Never change shader values without localhost visual test
-Never break existing features when adding new ones
+## Critical Rules — NEVER VIOLATE
+1. FULL FILES ONLY — no partial files
+2. npm run build before every deploy
+3. All prompts in lib/prompts.ts — never inline
+4. next.config.js stays .js NOT .ts
+5. Model: claude-sonnet-4-6
+6. temperature: 0 on all Claude calls
+7. Never commit .env.local
+8. Never let Claude Code run terminal commands
+9. Never hardcode API keys
+10. Specify exact file in debug prompts
+11. Never --force on git push
+12. TLE endpoint: class/gp NOT class/tle_latest
+13. Test localhost BEFORE pushing to Vercel
+14. Never change shader without localhost visual test
+15. Never break existing features adding new ones
+16. Always update CLAUDE.md at end of session
 
+---
 
-Debug Prompt Template — USE THIS EVERY TIME
-Error in [EXACT FILE] at line [N]:
-[PASTE EXACT ERROR]
-Only look at [EXACT FILE].
-Fix by [EXACT FIX IF KNOWN].
-Show complete fixed file top to bottom.
-Do not read any other files.
+## Claude Code Operational Notes
+- /clear at start of every session
+- /cost to check token burn
+- Press 2 "Yes allow all edits" to skip confirmations
+- Multi-line pastes: double Ctrl+V
+- Single-line prompts avoid freeze issues
+- Claude Code has NO memory between sessions
+- CLAUDE.md IS the memory
+- Restart: cd C:\Users\user\SpaceDebris && claude
+- First prompt: Read CLAUDE.md entirely before responding
 
-Claude Code Operational Notes
+---
 
-Claude Code auto-applies edits (checkmark = written to disk)
-Multi-line pastes: double Ctrl+V (paste again to expand)
-Long prompts: use single-line to avoid paste glitch
-"accept edits on" = edits PENDING, press Enter to apply
-Press 2 "Yes allow all edits this session" to skip confirmations
-/clear at start of each session (fresh context, saves money)
-/cost to check token burn
-Claude Code reads CLAUDE.md automatically as rulebook
-Claude Code has NO memory between sessions
-Restart: cd C:\Users\user\SpaceDebris && claude
-First prompt: Read CLAUDE.md entirely before responding
-58% of usage at >150k context = expensive. Use /compact
+## Features Roadmap
 
+### COMPLETED
+Phase 1: Kessler Cascade Simulator ✅
+Phase 2: Maneuver Recommendation Engine ✅
+Phase 3: Fleet Intelligence Dashboard ✅
 
-Session Lessons Learned
-Session 1
+### NEXT — Phase 4: Operator Alert Network
+Satellite operators subscribe to real-time alerts for
+their specific assets. When a conjunction involves their
+satellite, immediate AI-generated notification is sent.
+Files: lib/prompts.ts, app/api/alerts/*, 
+       components/AlertSubscription.tsx, app/page.tsx
+Complexity: HIGH
+Revenue impact: DIRECT — converts free users to paying
 
-@types/satellite.js does not exist on npm
-OrbitControls needs .js extension in import
-
-Session 2
-
-Space-Track tle_latest class deprecated — use gp
-Space-Track returns 404 (not 401) when unauthenticated
-Cookie name is chocolatechip (not a bug)
-Diagnosis: add console.logs, confirm auth, then remove
-Never exit Claude Code — use second terminal
-.next cache clear: rmdir /s /q .next (second terminal)
-Multi-line paste in Claude Code causes es.es.es bug
-Vercel auto-deploys on git push (GitHub webhook active)
-vercel --prod not needed when GitHub connected
-Deploy AFTER pushing code (not before)
-
-Session 3
-
-uSize 7.0 created blob rendering at high object density
-uSize 2.0 + smoothstep(0.5, 0.3, d) = crisp distinct dots
-Always test shader changes on localhost before Vercel push
-Chrome throttles background tabs (Paused = low FPS)
-Click on globe to wake tab from Chrome throttling
-LEO dense shell is scientifically correct (not a bug)
-MEO 6 clusters = GPS orbital planes (correct, impressive)
-GEO arc = geostationary belt (correct, impressive)
-Demo: start with ALL filter, show MEO for GPS clusters
-46,000 tracked objects (not 27,000 — update your facts)
-NASA judge LinkedIn connection = more valuable than prize
-Scheduling app won HackHCC (use as fuel, not discouragement)
-
-
-Business Development Notes
-
-NASA-connected judge: sent LinkedIn request post-demo
-LinkedIn message sent Day 1 post-hackathon
-Next step: await response, prepare NASA demo version
-Target customers: SpaceX, Amazon Kuiper, ESA, insurance cos
-Regulatory angle: FCC compliance standardization
-Revenue model: API calls + enterprise contracts + SBIR grants
-NASA SBIR Phase 1: $150,000 non-dilutive grant available
-Apply at: sbir.nasa.gov
-Domain to register: spacedebris.space (GoDaddy promo available)
-List on: RapidAPI, Product Hunt, GitHub
-Write: Dev.to blog post about 24-hour build story
-
-
-Features Roadmap (Session 3+)
-Phase 1 — Kessler Cascade Simulator — NEXT
-Simulate cascade effects of any conjunction event.
-Files: lib/prompts.ts, app/api/cascade/route.ts,
-components/AlertFeed.tsx
-Complexity: LOW (pure Claude AI, no new infrastructure)
-Impact: HIGH (narrative weapon for NASA/SpaceX demos)
-Phase 2 — Maneuver Recommendation Engine
-Generate specific burn recommendations for conjunctions.
-Files: lib/prompts.ts, app/api/maneuver/route.ts,
-components/RiskScorer.tsx
-Complexity: MEDIUM (orbital mechanics reasoning)
-Impact: HIGH ($60M/year value to SpaceX)
-Phase 3 — Fleet Intelligence Dashboard
-Real-time health monitoring for satellite constellations.
-Files: lib/prompts.ts, app/api/fleet/route.ts,
-components/FleetDashboard.tsx, app/page.tsx
-Complexity: MEDIUM (new component + API route)
-Impact: VERY HIGH (Bloomberg Terminal for space)
-Phase 4 — Operator Alert Network
-Subscription-based real-time conjunction alerts.
-Files: lib/prompts.ts, app/api/alerts/*,
-components/AlertSubscription.tsx, app/page.tsx
-Complexity: HIGH (subscriptions, webhooks, state)
-Impact: HIGH (recurring revenue model)
-Phase 5 — Predictive Conjunction Engine
-Predict conjunctions before Space-Track publishes CDMs.
+### Phase 5: Predictive Conjunction Engine
+Predict conjunctions 2 hours before Space-Track publishes.
+Run own SGP4 propagation on all 1,989 objects continuously.
 Files: lib/propagation.ts, app/api/predict/route.ts,
-components/PredictionFeed.tsx, app/page.tsx
-Complexity: VERY HIGH (orbital mechanics, performance)
-Impact: CRITICAL (2-hour advantage over government data)
-Phase 6 — Autonomous Satellite Integration
-Direct integration with satellite command systems.
-Complexity: EXTREME (requires industry partnerships)
-Impact: TRILLION DOLLAR (air traffic control for space)
+       components/PredictionFeed.tsx
+Complexity: VERY HIGH
+Revenue impact: $60M/year value to SpaceX
 
-Git Repository
+### Phase 6: Autonomous Satellite Integration
+Direct integration with operator command systems.
+Autonomous maneuver execution within approved windows.
+Complexity: EXTREME (partnerships, certifications, years)
+Revenue impact: TRILLION DOLLAR
 
-GitHub: https://github.com/IQEmperor24/SpaceDebris.git
-Branch: main
-Local: C:\Users\user\SpaceDebris
+---
 
-Claude Code Setup
+## Business Development
+- NASA judge LinkedIn: message sent, awaiting reply
+- When he replies: prepare NASA-specific demo immediately
+- Target customers: SpaceX, Amazon Kuiper, ESA, insurers
+- Best investor fit: Seraphim Capital (space-only VC)
+- Best accelerator: Creative Destruction Lab (Waterloo)
+- Grant target: NASA SBIR Phase 1 ($150K, sbir.nasa.gov)
+- Domain: spacedebris.space (register when ready)
+- Also building: Roblox game (use Opus to 10x from $1/day)
 
-Launch: cd C:\Users\user\SpaceDebris && claude
-Model: Opus 4.7
-First prompt every session:
-/clear then: Read CLAUDE.md entirely before responding.
-Confirm by summarizing current status, what is broken,
-and what was fixed. Do not read any other files first.
+## Revenue Strategy
+- Phase 4 complete → charge $49-499/month subscriptions
+- Phase 5 complete → $10K-100K/year API contracts
+- Phase 6 complete → $1M+/year enterprise deals
+- FCC compliance angle → mandatory usage for all operators
 
+---
 
-The Vision
+## Session Lessons Learned
+
+### Session 4
+- Phase 1-3 built in ~1 hour total
+- Total cost: $4.04 (40k + 33k + 40k tokens)
+- Aunt's Anthropic API key ran out mid-session
+  Fix: Aayush created own account, added $20 credits
+  Update BOTH .env.local AND Vercel dashboard when changing keys
+- Cascade cache bug: cdmId collision between alerts
+  Fix: composite cache key (cdmId+sat1Id+sat2Id+tca+miss+prob)
+- Claude Code agents: not yet needed (linear Opus fast enough)
+- Sub-agents: not viable yet (shared files cause conflicts)
+- Python backend: needed for Phase 5+ (sgp4, numpy, scipy)
+- Roblox game ($1/day): use as funding vehicle for SpaceDebris
+- Sequential phases: each builds cleanly on previous
+- Never start new phase without npm run build clean
+
+---
+
+## Git Repository
+- GitHub: https://github.com/IQEmperor24/SpaceDebris.git
+- Branch: main
+- Local: C:\Users\user\SpaceDebris
+
+## Claude Code Setup
+- Launch: cd C:\Users\user\SpaceDebris && claude
+- Model: Opus 4.7
+- First prompt every session:
+  /clear
+  Read CLAUDE.md entirely before responding.
+  Confirm by summarizing what is built, what phases
+  are complete, and what Phase we build next.
+  Do not read any other files first.
+
+---
+
+## The Vision
 SpaceDebris is not a hackathon project anymore.
 It is the beginning of the AI infrastructure layer
 for the space age.
-The problem is existential. The market is trillion dollar.
-The technical moat is real. The NASA connection is active.
-Every line of code from here is a step toward building
+
+Sessions 1-2: MVP built and deployed ($20.36)
+Session 3:    Shader fixed, dots crisp ($0)
+Session 4:    Phases 1-3 complete ($4.04)
+Total:        ~$24 invested
+
+The problem is existential.
+The market is trillion dollar.
+The NASA connection is active.
+The product is live and growing.
+
+Every line of code is a step toward building
 the air traffic control system for orbital space.
+
 Build carefully. Build correctly. Build to last.
-Houston, we have a solution.
+
+Houston, we have a solution. 🚀
