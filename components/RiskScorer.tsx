@@ -1,7 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { RiskScore, ThreatLevel } from "@/lib/prompts";
+import type {
+  ManeuverLevel,
+  ManeuverPlan,
+  ManeuverRequest,
+  RiskScore,
+  ThreatLevel,
+} from "@/lib/prompts";
 
 /* ============================================================
    Panel 2 — AI Risk Scorer
@@ -9,6 +15,13 @@ import type { RiskScore, ThreatLevel } from "@/lib/prompts";
    Input a satellite name or NORAD ID -> POST /api/analyze ->
    render a RiskScore with animated score bars and an orbital
    data grid (CONTEXT.md Panel 2).
+
+   Session 4 addition — Maneuver Recommendation Engine:
+   MEDIUM / HIGH / CRITICAL results expose a GET MANEUVER PLAN
+   button that POSTs to /api/maneuver and renders the 6-section
+   plain-text plan in an amber/orange panel with a coloured
+   RECOMMENDATION badge. The existing search flow, score bars,
+   data grid, and animations are NOT touched.
    ============================================================ */
 
 const QUICK_CHIPS = ["ISS", "HUBBLE", "STARLINK-1234", "25544", "NOAA 19"];
@@ -19,6 +32,21 @@ const THREAT_COLORS: Record<ThreatLevel, string> = {
   HIGH: "#FF8A2B",
   CRITICAL: "#FF3131",
 };
+
+/** Maneuver badge colours — green/amber/orange/red by action level. */
+const MANEUVER_REC_COLORS: Record<ManeuverLevel, string> = {
+  MONITOR: "#00FF41",
+  PREPARE: "#FFB800",
+  EXECUTE: "#FF8A2B",
+  EMERGENCY: "#FF3131",
+};
+
+/** Maneuver button only shows for these threats (per spec). */
+const MANEUVER_ELIGIBLE: ReadonlySet<ThreatLevel> = new Set<ThreatLevel>([
+  "MEDIUM",
+  "HIGH",
+  "CRITICAL",
+]);
 
 /** Risk scale: low value = safe (green), high value = danger (red). */
 function riskColor(value: number): string {
@@ -82,11 +110,55 @@ function DataCell({ label, value }: { label: string; value: string }) {
   );
 }
 
+/**
+ * Amber/orange-themed maneuver plan panel.
+ * Strips the trailing RECOMMENDATION: line out of the body text
+ * since we already render the action level as its own badge.
+ */
+function ManeuverPanel({ plan }: { plan: ManeuverPlan }) {
+  const recColor = MANEUVER_REC_COLORS[plan.recommendation];
+  const body = plan.text.replace(/RECOMMENDATION\s*:.*$/im, "").trim();
+  const isEmergency = plan.recommendation === "EMERGENCY";
+
+  return (
+    <div
+      className={`mt-3 rounded-md border p-3 ${isEmergency ? "animate-pulse-alert" : ""}`}
+      style={{
+        borderColor: "rgba(255, 138, 43, 0.6)", // amber/orange #FF8A2B at 60%
+        backgroundColor: "rgba(255, 184, 0, 0.08)", // amber #FFB800 at 8%
+      }}
+    >
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <span
+          className="font-display text-[0.7rem] font-bold uppercase tracking-widest"
+          style={{ color: "#FF8A2B" }}
+        >
+          ▸ Maneuver Plan
+        </span>
+        <span
+          className="shrink-0 rounded px-2 py-0.5 font-display text-[0.65rem] font-bold"
+          style={{ color: recColor, border: `1px solid ${recColor}` }}
+        >
+          {plan.recommendation}
+        </span>
+      </div>
+      <pre className="whitespace-pre-wrap break-words font-mono text-[0.65rem] leading-relaxed text-text-secondary">
+        {body}
+      </pre>
+    </div>
+  );
+}
+
 export default function RiskScorer() {
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<RiskScore | null>(null);
+
+  // ---- Maneuver-engine state (independent of the risk-scorer flow) ----
+  const [maneuverLoading, setManeuverLoading] = useState(false);
+  const [maneuverError, setManeuverError] = useState<string | null>(null);
+  const [maneuver, setManeuver] = useState<ManeuverPlan | null>(null);
 
   async function analyze(rawQuery: string) {
     const q = rawQuery.trim();
@@ -95,6 +167,10 @@ export default function RiskScorer() {
     setLoading(true);
     setError(null);
     setResult(null);
+
+    // Clear any stale maneuver plan from the previous satellite.
+    setManeuver(null);
+    setManeuverError(null);
 
     try {
       const res = await fetch("/api/analyze", {
@@ -114,6 +190,53 @@ export default function RiskScorer() {
       setLoading(false);
     }
   }
+
+  async function getManeuverPlan() {
+    if (!result || maneuverLoading) return;
+    if (!MANEUVER_ELIGIBLE.has(result.overallThreat)) return;
+
+    setManeuverLoading(true);
+    setManeuverError(null);
+
+    const body: ManeuverRequest = {
+      satelliteName: result.tle?.OBJECT_NAME ?? query.trim() ?? "Unknown",
+      noradId: result.tle?.NORAD_CAT_ID ?? "Unknown",
+      altitudeKm: result.altitudeKm,
+      periodMinutes: result.periodMinutes,
+      inclinationDeg: result.inclinationDeg,
+      collisionProbability: result.collisionProbability,
+      debrisDensity: result.debrisDensity,
+      orbitalStability: result.orbitalStability,
+      overallThreat: result.overallThreat,
+      closestApproach: result.closestApproach,
+      tleLine1: result.tle?.TLE_LINE1,
+      tleLine2: result.tle?.TLE_LINE2,
+    };
+
+    try {
+      const res = await fetch("/api/maneuver", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(
+          data?.error ?? `Maneuver request failed (HTTP ${res.status}).`
+        );
+      }
+      setManeuver(data as ManeuverPlan);
+    } catch (err) {
+      setManeuverError(
+        err instanceof Error ? err.message : "Maneuver plan failed."
+      );
+    } finally {
+      setManeuverLoading(false);
+    }
+  }
+
+  const showManeuverButton =
+    result !== null && MANEUVER_ELIGIBLE.has(result.overallThreat);
 
   return (
     <div className="flex h-full flex-col gap-3 p-4">
@@ -210,6 +333,39 @@ export default function RiskScorer() {
               color={stabilityColor(result.orbitalStability)}
             />
           </div>
+
+          {/* Maneuver trigger — MEDIUM / HIGH / CRITICAL only.
+              Sits below the score bars (per spec) and above the
+              orbital data so it's the most prominent next-action. */}
+          {showManeuverButton && (
+            <div>
+              <button
+                type="button"
+                onClick={getManeuverPlan}
+                disabled={maneuverLoading}
+                className="w-full rounded border px-2 py-1.5 font-display text-[0.65rem] font-bold uppercase tracking-widest transition disabled:cursor-not-allowed disabled:opacity-50"
+                style={{
+                  color: "#FF8A2B",
+                  borderColor: "rgba(255, 138, 43, 0.6)",
+                  backgroundColor: "rgba(255, 184, 0, 0.1)",
+                }}
+              >
+                {maneuverLoading
+                  ? "Computing maneuver plan…"
+                  : maneuver
+                    ? "↻ Re-run maneuver plan"
+                    : "▸ Get maneuver plan"}
+              </button>
+
+              {maneuverError && (
+                <div className="mt-2 rounded border border-danger/40 bg-danger/10 px-2 py-1 font-mono text-[0.65rem] text-danger">
+                  {maneuverError}
+                </div>
+              )}
+
+              {maneuver && <ManeuverPanel plan={maneuver} />}
+            </div>
+          )}
 
           {/* Orbital data grid */}
           <div className="grid grid-cols-3 gap-2">

@@ -14,7 +14,14 @@ import { searchTLE, fetchTLEs, type SpaceTrackTLE } from "@/lib/spacetrack";
    1. searchTLE(query)            -> target object (404 if none)
    2. fetchTLEs(sample)           -> nearby-object context
    3. Claude (model + temp 0)     -> RiskScore JSON
-   4. parse + return RiskScore
+   4. parse + return RiskScore + attached TLE
+
+   The response is the parsed RiskScore SPREAD with `tle: target`
+   attached. Downstream features (maneuver, fleet) reuse the TLE
+   without a second Space-Track lookup. The existing RiskScorer UI
+   ignores `.tle` so this change is non-breaking — Claude is still
+   told to return only the 9 scored fields and that contract is
+   unchanged.
 
    Model string + temperature come from lib/anthropic.ts.
    Prompts come from lib/prompts.ts (Workflow Rule #3).
@@ -132,7 +139,10 @@ export async function POST(request: Request): Promise<NextResponse> {
       );
     }
 
-    return NextResponse.json(score);
+    // Attach the resolved TLE so downstream features (maneuver, fleet)
+    // can reuse it without re-hitting Space-Track. Optional in the
+    // RiskScore type — existing UI consumers ignore it.
+    return NextResponse.json({ ...score, tle: target });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     console.error("[/api/analyze] error:", message);
