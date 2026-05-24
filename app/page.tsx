@@ -3,9 +3,9 @@
 import dynamic from "next/dynamic";
 
 /* ============================================================
-   SpaceDebris — Main Dashboard (all 3 panels)
+   SpaceDebris — Main Dashboard (3 panels + fleet intelligence)
 
-   All three panels are dynamically imported with ssr: false:
+   All panels are dynamically imported with ssr: false:
    - They render Three.js / browser-only APIs (Panel 1 especially).
    - In the Next.js 14 App Router, `next/dynamic` with
      { ssr: false } is only allowed inside a Client Component,
@@ -14,6 +14,11 @@ import dynamic from "next/dynamic";
    NOTE: metadata is intentionally NOT exported here — that only
    works in Server Components. Title/description live in
    app/layout.tsx.
+
+   Session 4 — Fleet Intelligence (Phase 3) sits BELOW the
+   existing 3-panel grid as a full-width section. The grid keeps
+   its fixed `lg:h-[calc(100vh-7rem)]` viewport sizing — the
+   new section pushes below the fold and is reached by scroll.
    ============================================================ */
 
 const OrbitalMap = dynamic(() => import("@/components/OrbitalMap"), {
@@ -39,6 +44,15 @@ const AlertFeed = dynamic(() => import("@/components/AlertFeed"), {
   loading: () => (
     <div className="flex h-full w-full items-center justify-center text-text-secondary font-mono text-sm">
       Connecting to alert feed…
+    </div>
+  ),
+});
+
+const FleetDashboard = dynamic(() => import("@/components/FleetDashboard"), {
+  ssr: false,
+  loading: () => (
+    <div className="glass-card p-4 text-text-secondary font-mono text-sm">
+      Loading fleet intelligence…
     </div>
   ),
 });
@@ -92,6 +106,11 @@ export default function DashboardPage() {
             <AlertFeed />
           </div>
         </section>
+      </div>
+
+      {/* ---------- Panel 4 — Fleet Intelligence (full width, below fold) ---------- */}
+      <div className="mt-4 md:mt-6">
+        <FleetDashboard />
       </div>
     </main>
   );

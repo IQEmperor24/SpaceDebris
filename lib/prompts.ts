@@ -150,6 +150,78 @@ export interface ManeuverPlan {
   generatedAt: string; // ISO timestamp
 }
 
+/** Orbital shell status assigned by the fleet intelligence brief. */
+export type ShellStatus = "NOMINAL" | "ELEVATED" | "CRITICAL";
+
+/** Aggregate risk-trend direction over the tracked environment. */
+export type RiskTrend = "IMPROVING" | "STABLE" | "DETERIORATING";
+
+/** One entry in the fleet brief's top-3 threats list. */
+export interface FleetTopThreat {
+  name: string; // pair name as provided to Claude, e.g. "STARLINK-1234 ↔ COSMOS DEBRIS"
+  reasoning: string; // 1-2 sentences why this event is a top threat
+  severity: ThreatLevel;
+}
+
+/**
+ * Subset of the fleet response that Claude generates.
+ * Server merges this with deterministic aggregate stats before
+ * returning to the client.
+ */
+export interface FleetAIAnalysis {
+  shells: {
+    leo: ShellStatus;
+    meo: ShellStatus;
+    geo: ShellStatus;
+  };
+  executiveBrief: string; // 3-4 sentences, NASA Administrator audience
+  riskTrend: RiskTrend;
+  topThreats: FleetTopThreat[]; // 0-3 entries
+  recommendedActions: string[]; // 3 entries
+}
+
+/**
+ * Output of GET /api/fleet — full intelligence brief the
+ * FleetDashboard renders. Numeric facts are server-computed; the
+ * brief / statuses / threats / actions come from Claude.
+ */
+export interface FleetIntelligence {
+  generatedAt: string;
+  totalObjects: number;
+  activeConjunctions: number;
+  highPriorityCount: number;
+  criticalCount: number;
+  shells: {
+    leo: { count: number; status: ShellStatus };
+    meo: { count: number; status: ShellStatus };
+    geo: { count: number; status: ShellStatus };
+  };
+  executiveBrief: string;
+  riskTrend: RiskTrend;
+  topThreats: FleetTopThreat[];
+  recommendedActions: string[];
+}
+
+/**
+ * Server-computed aggregate stats fed INTO the fleet prompt.
+ * Decoupled from FleetIntelligence so the prompt input has its
+ * own explicit contract (and so the response shape can evolve
+ * independently of the prompt shape).
+ */
+export interface FleetStatsForPrompt {
+  totalObjects: number;
+  activeConjunctions: number;
+  highPriorityCount: number;
+  criticalCount: number;
+  shellCounts: { leo: number; meo: number; geo: number };
+  topCDMs: Array<{
+    pair: string; // "SAT_1_NAME ↔ SAT_2_NAME"
+    tca: string;
+    missKm: string;
+    pc: string;
+  }>;
+}
+
 /* ------------------------------------------------------------
    1) Risk scoring (POST /api/analyze)
    ------------------------------------------------------------ */
@@ -427,4 +499,105 @@ Orbital stability score (0-100, higher = more stable): ${req.orbitalStability}
 Closest approach: ${req.closestApproach}
 
 Produce the 6-section maneuver plan per your instructions and end with the RECOMMENDATION: line.`;
+}
+
+/* ------------------------------------------------------------
+   5) Fleet intelligence brief (GET /api/fleet)
+
+   Bloomberg-Terminal-for-space style aggregate dashboard. Server
+   computes deterministic stats (object counts by shell, top
+   threats by composite severity score, HIGH/CRITICAL counts via
+   industry thresholds). Claude turns those facts into:
+     - Per-shell status (NOMINAL / ELEVATED / CRITICAL)
+     - Risk-trend direction (IMPROVING / STABLE / DETERIORATING)
+     - 3-4 sentence executive brief for the NASA Administrator
+     - 0-3 top-threat reasonings with severity classification
+     - 3 concrete recommended actions
+
+   One Claude call. JSON output. Server merges with stats and
+   returns FleetIntelligence to the FleetDashboard component.
+   ------------------------------------------------------------ */
+
+export const FLEET_INTELLIGENCE_PROMPT = `You are the chief space situational-awareness analyst briefing the NASA Administrator's morning intelligence sync. You synthesize aggregate orbital risk across the entire tracked debris environment into a concise executive brief, per-shell status assessments, a risk-trend direction, and three concrete recommended actions.
+
+You ALWAYS respond with a single valid JSON object and NOTHING else. No markdown, no code fences, no commentary before or after.
+
+The JSON object MUST match this exact schema:
+{
+  "shells": {
+    "leo": "NOMINAL" | "ELEVATED" | "CRITICAL",
+    "meo": "NOMINAL" | "ELEVATED" | "CRITICAL",
+    "geo": "NOMINAL" | "ELEVATED" | "CRITICAL"
+  },
+  "executiveBrief": <string, 3-4 sentences>,
+  "riskTrend": "IMPROVING" | "STABLE" | "DETERIORATING",
+  "topThreats": [
+    { "name": <string>, "reasoning": <string>, "severity": "LOW" | "MEDIUM" | "HIGH" | "CRITICAL" }
+  ],
+  "recommendedActions": [<string>, <string>, <string>]
+}
+
+Shell status criteria:
+- NOMINAL: object density and conjunction rate within historical baseline for that band.
+- ELEVATED: density or conjunction count meaningfully above baseline; monitor closely.
+- CRITICAL: density crossing Kessler-precursor thresholds OR multiple critical-class conjunctions concentrated in band.
+
+Risk trend criteria:
+- IMPROVING: shell statuses easing, fewer critical-class events, recent active-removal milestones.
+- STABLE: status quo holding — same conjunction cadence, same shell-status mix as recent baseline.
+- DETERIORATING: shell statuses worsening, more critical-class events, recent fragmentation events.
+- If you have only a single snapshot with no historical signal, return STABLE — NEVER invent a trend.
+
+Executive brief rules:
+- Plain English, 3-4 sentences, written for the NASA Administrator audience.
+- Lead with the bottom line. Reference specific numbers where they tell the story.
+- No hedging language ("perhaps", "potentially"). State what is observed.
+
+topThreats rules:
+- EXACTLY one entry per input top-conjunction event, in the SAME ORDER as provided.
+- Copy each "name" field verbatim from the input event line.
+- "reasoning" is 1-2 sentences explaining what makes this conjunction a top threat.
+- "severity" reflects the threat of THAT conjunction, not the fleet-wide picture.
+- If no events are provided, return an empty topThreats array.
+
+recommendedActions rules:
+- EXACTLY 3 entries, each one concrete and operational (not platitudes).
+- Specify WHO acts, WHAT they do, and (where applicable) WHICH orbital regime / operator / conjunction is the target.
+- Example shape: "Coordinate with SpaceX FOC to brief avoidance burn options for STARLINK-1234 within 6 hours."
+
+Return ONLY the JSON object.`;
+
+/**
+ * Build the fleet user prompt from server-computed aggregate stats.
+ * The topCDMs list is pre-ranked by composite severity — Claude
+ * just explains and classifies, it does not re-rank.
+ */
+export function buildFleetUserPrompt(stats: FleetStatsForPrompt): string {
+  const cdmBlock =
+    stats.topCDMs.length > 0
+      ? stats.topCDMs
+          .map(
+            (c, i) =>
+              `${i + 1}. ${c.pair} — TCA ${c.tca}, miss ${c.missKm} km, PC ${c.pc}`
+          )
+          .join("\n")
+      : "No active conjunction events.";
+
+  return `Analyze the current state of the tracked orbital debris environment and produce the executive intelligence brief per your instructions.
+
+AGGREGATE STATS
+Total tracked objects (current sample): ${stats.totalObjects}
+Active conjunction events: ${stats.activeConjunctions}
+  HIGH-priority class (server heuristic): ${stats.highPriorityCount}
+  CRITICAL class (server heuristic): ${stats.criticalCount}
+
+OBJECTS BY ORBITAL SHELL
+LEO (200-2000 km): ${stats.shellCounts.leo}
+MEO (2000-35000 km): ${stats.shellCounts.meo}
+GEO (>35000 km): ${stats.shellCounts.geo}
+
+TOP CONJUNCTION EVENTS (server-ranked by composite severity):
+${cdmBlock}
+
+Produce the JSON intelligence brief per your schema. The topThreats array must contain exactly one entry per top conjunction above, in the same order, with each "name" copied verbatim.`;
 }
