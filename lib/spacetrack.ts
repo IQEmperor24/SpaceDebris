@@ -14,6 +14,25 @@
    IMPORTANT: routes that import this MUST run on the Node.js
    runtime (export const runtime = "nodejs"), not Edge — this
    relies on cookies and longer-lived requests.
+
+   Session 5 additions (rate-limit hygiene — the page now has
+   eleven routes, several of which pull the SAME datasets):
+   - ONE login at a time: concurrent callers on a cold instance
+     share a single in-flight login promise instead of each
+     logging in (fleet / iss / screen / debris all fire together
+     on page load).
+   - Shared dataset caches with in-flight dedupe, keyed by query:
+       fetchTLEs(limit)        -> "gp:<limit>", TTL 10 min
+       fetchConjunctions(...)  -> one cdm_public pull of
+                                  CDM_SHARED_LIMIT rows, TTL 60 s,
+                                  sliced per caller
+     so /api/debris, /api/fleet and /api/screen share one 2,000-row
+     download, and /api/conjunctions, /api/fleet and /api/iss share
+     one CDM download. Route-level caches still sit on top.
+   - 15 s fetch timeout on login and queries so a stalled
+     Space-Track socket cannot pin a route to its maxDuration.
+   Auth logic (cookie parse, 401 re-login + single retry) is
+   unchanged.
    ============================================================ */
 
 const BASE_URL = "https://www.space-track.org";
@@ -22,6 +41,16 @@ const QUERY_BASE = `${BASE_URL}/basicspacedata/query`;
 
 /** Session cookie is valid for ~1 hour; refresh after 50 minutes. */
 const COOKIE_TTL_MS = 50 * 60 * 1000;
+
+/** Abort any single Space-Track HTTP call after this long. */
+const FETCH_TIMEOUT_MS = 15_000;
+
+/** Shared gp (TLE) sample cache TTL — matches /api/debris. */
+const TLE_CACHE_TTL_MS = 10 * 60 * 1000;
+/** Shared cdm_public cache TTL — matches /api/conjunctions. */
+const CDM_CACHE_TTL_MS = 60 * 1000;
+/** All CDM consumers share ONE pull of this many soonest rows. */
+const CDM_SHARED_LIMIT = 100;
 
 /* ------------------------------------------------------------
    Response shapes — Space-Track returns every field as a STRING
@@ -67,6 +96,8 @@ export interface SpaceTrackCDM {
 
 let sessionCookie: string | null = null;
 let cookieFetchedAt = 0;
+/** Shared in-flight login so concurrent cold callers log in once. */
+let loginInFlight: Promise<string> | null = null;
 
 /** Read + validate credentials from the environment. */
 function getCredentials(): { identity: string; password: string } {
@@ -89,7 +120,7 @@ async function login(): Promise<string> {
 
   const body = new URLSearchParams({ identity, password }).toString();
 
-  const res = await fetch(LOGIN_URL, {
+  const res = await fetchWithTimeout(LOGIN_URL, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body,
@@ -115,13 +146,93 @@ async function login(): Promise<string> {
   return sessionCookie;
 }
 
-/** Return a valid session cookie, logging in if missing/expired. */
+/**
+ * Return a valid session cookie, logging in if missing/expired.
+ * Concurrent callers that all need a login share ONE in-flight
+ * login promise (Session 5) — a cold serverless instance used to
+ * perform one login per concurrent route on page load.
+ */
 async function getSessionCookie(forceRefresh = false): Promise<string> {
   const expired = Date.now() - cookieFetchedAt > COOKIE_TTL_MS;
-  if (forceRefresh || !sessionCookie || expired) {
-    return login();
+  if (!forceRefresh && sessionCookie && !expired) {
+    return sessionCookie;
   }
-  return sessionCookie;
+  if (!loginInFlight) {
+    loginInFlight = login().finally(() => {
+      loginInFlight = null;
+    });
+  }
+  return loginInFlight;
+}
+
+/** fetch() with an absolute timeout; maps the abort to a clear error. */
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit
+): Promise<Response> {
+  try {
+    return await fetch(url, {
+      ...init,
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    });
+  } catch (err) {
+    const name = err instanceof Error ? err.name : "";
+    if (name === "TimeoutError" || name === "AbortError") {
+      throw new Error(
+        `Space-Track request timed out after ${FETCH_TIMEOUT_MS / 1000}s — ${url}`
+      );
+    }
+    throw err;
+  }
+}
+
+/* ------------------------------------------------------------
+   Shared dataset cache (module-scoped, per serverless instance)
+   with in-flight dedupe: N concurrent callers -> 1 request.
+   Failures are never cached; the in-flight slot is cleared on
+   rejection so the next caller retries.
+   ------------------------------------------------------------ */
+
+interface SharedCacheEntry<T> {
+  data: T;
+  expires: number;
+}
+
+const sharedCache = new Map<string, SharedCacheEntry<unknown>>();
+const sharedInFlight = new Map<string, Promise<unknown>>();
+
+async function sharedFetch<T>(
+  key: string,
+  ttlMs: number,
+  loader: () => Promise<T>
+): Promise<T> {
+  const hit = sharedCache.get(key);
+  if (hit && hit.expires > Date.now()) {
+    return hit.data as T;
+  }
+  if (hit) sharedCache.delete(key);
+
+  const pending = sharedInFlight.get(key);
+  if (pending) {
+    return pending as Promise<T>;
+  }
+
+  const request = loader()
+    .then((data) => {
+      sharedCache.set(key, { data, expires: Date.now() + ttlMs });
+      return data;
+    })
+    .finally(() => {
+      if (sharedInFlight.get(key) === request) sharedInFlight.delete(key);
+    });
+  sharedInFlight.set(key, request);
+  return request;
+}
+
+/** Test/ops hook: drop every shared dataset cache entry. */
+export function clearSpaceTrackCaches(): void {
+  sharedCache.clear();
+  sharedInFlight.clear();
 }
 
 /**
@@ -132,7 +243,7 @@ async function spaceTrackGet<T>(queryPath: string): Promise<T> {
   const url = `${QUERY_BASE}/${queryPath}`;
 
   const doRequest = async (cookie: string): Promise<Response> =>
-    fetch(url, {
+    fetchWithTimeout(url, {
       method: "GET",
       headers: { Cookie: cookie },
       cache: "no-store",
@@ -172,7 +283,22 @@ export async function fetchTLEs(limit: number): Promise<SpaceTrackTLE[]> {
   // `gp` (General Perturbations) is Space-Track's current recommended
   // class — returns one latest element set per object, no ORDINAL needed.
   const path = `class/gp/orderby/EPOCH%20desc/limit/${safeLimit}/format/json`;
-  return spaceTrackGet<SpaceTrackTLE[]>(path);
+  // Shared per-limit cache: /api/debris, /api/fleet and /api/screen all
+  // ask for 2,000 rows and now share ONE download per instance per 10 min.
+  return sharedFetch<SpaceTrackTLE[]>(`gp:${safeLimit}`, TLE_CACHE_TTL_MS, () =>
+    spaceTrackGet<SpaceTrackTLE[]>(path)
+  );
+}
+
+/**
+ * Health probe: ONE real gp query that deliberately BYPASSES the shared
+ * dataset cache, so /api/health measures live Space-Track round-trip
+ * time and sees an outage as soon as its own cache expires.
+ */
+export async function probeGp(): Promise<SpaceTrackTLE[]> {
+  return spaceTrackGet<SpaceTrackTLE[]>(
+    "class/gp/orderby/EPOCH%20desc/limit/1/format/json"
+  );
 }
 
 /**
@@ -201,7 +327,15 @@ export async function searchTLE(query: string): Promise<SpaceTrackTLE | null> {
 export async function fetchConjunctions(
   limit: number
 ): Promise<SpaceTrackCDM[]> {
-  const safeLimit = Math.max(1, Math.min(limit, 100));
-  const path = `class/cdm_public/TCA/%3Enow/orderby/TCA%20asc/limit/${safeLimit}/format/json`;
-  return spaceTrackGet<SpaceTrackCDM[]>(path);
+  const safeLimit = Math.max(1, Math.min(limit, CDM_SHARED_LIMIT));
+  // ONE shared pull of the soonest CDM_SHARED_LIMIT rows (TCA asc),
+  // sliced per caller: the alert feed (10), fleet (25) and the ISS
+  // console (100) no longer trigger three separate downloads.
+  const path = `class/cdm_public/TCA/%3Enow/orderby/TCA%20asc/limit/${CDM_SHARED_LIMIT}/format/json`;
+  const rows = await sharedFetch<SpaceTrackCDM[]>(
+    `cdm:${CDM_SHARED_LIMIT}`,
+    CDM_CACHE_TTL_MS,
+    () => spaceTrackGet<SpaceTrackCDM[]>(path)
+  );
+  return rows.slice(0, safeLimit);
 }

@@ -23,6 +23,8 @@ import {
 export const runtime = "nodejs";
 // Never statically optimize — our own cache controls freshness.
 export const dynamic = "force-dynamic";
+// Mirror vercel.json so a cold Space-Track login + 2,000-row pull has headroom.
+export const maxDuration = 30;
 
 const DEBRIS_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 const DEFAULT_LIMIT = 500;

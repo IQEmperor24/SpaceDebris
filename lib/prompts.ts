@@ -601,3 +601,197 @@ ${cdmBlock}
 
 Produce the JSON intelligence brief per your schema. The topThreats array must contain exactly one entry per top conjunction above, in the same order, with each "name" copied verbatim.`;
 }
+
+/* ------------------------------------------------------------
+   6) Conjunction screening assessment (POST /api/assess)
+
+   Session 5 — the SGP4 Conjunction Screening Engine
+   (GET /api/screen) is fully deterministic: it propagates a
+   target against the tracked sample, finds close approaches,
+   expresses them in the target's RIC frame, and computes a
+   probability of collision under an explicitly stated TLE-grade
+   covariance assumption. Claude never touches those numbers.
+
+   This prompt is the AI layer ON TOP of that physics: given the
+   screening output, write a CARA-style conjunction-assessment
+   memo and a GREEN / YELLOW / RED disposition. The types below
+   are the API contracts for BOTH routes so the screener UI, the
+   screen route, and the assess route share one source of truth.
+   ------------------------------------------------------------ */
+
+/** Coarse object class derived from a Space-Track OBJECT_NAME. */
+export type ScreeningObjectClass =
+  | "DEBRIS"
+  | "ROCKET BODY"
+  | "PAYLOAD"
+  | "UNKNOWN";
+
+/** Target object summary for the SGP4 conjunction screener. */
+export interface ScreeningTarget {
+  noradId: string;
+  name: string;
+  meanAltitudeKm: number;
+  inclinationDeg: number;
+  periodMinutes: number;
+  epoch: string; // ISO — TLE epoch the screen was propagated from
+}
+
+/** One predicted close approach from GET /api/screen. */
+export interface ScreeningCloseApproach {
+  noradId: string;
+  name: string;
+  objectClass: ScreeningObjectClass;
+  tca: string; // ISO time of closest approach
+  missDistanceKm: number;
+  relativeVelocityKmS: number;
+  /** Secondary position relative to the target, in the TARGET's RIC frame. */
+  radialKm: number;
+  inTrackKm: number;
+  crossTrackKm: number;
+  /** Target geodetic height at TCA (km, WGS-84 ellipsoid). */
+  altitudeKm: number;
+  /** 0-1, under the stated TLE-grade covariance + hard-body radius. */
+  probabilityOfCollision: number;
+  /** True if |R|,|I|,|C| all fall inside the NASA ISS keep-out box. */
+  insideKeepOutBox: boolean;
+  severity: ThreatLevel;
+}
+
+/** Every assumption the screener bakes in — shown verbatim in the UI. */
+export interface ScreeningAssumptions {
+  /** Per-object 1-σ position uncertainty in RIC (km): [radial, in-track, cross-track]. */
+  sigmaRicKm: [number, number, number];
+  /** Combined hard-body radius (metres). */
+  hardBodyRadiusM: number;
+  /** NASA ISS "pizza box" half-widths (km). */
+  keepOutBoxKm: { radial: number; inTrack: number; crossTrack: number };
+  coarseStepSeconds: number;
+  windowHours: number;
+  /** Approaches with a miss distance above this (km) are not reported. */
+  reportThresholdKm: number;
+}
+
+/** Output of GET /api/screen?target=<name|NORAD>&hours=<n>. */
+export interface ScreeningResult {
+  target: ScreeningTarget;
+  generatedAt: string;
+  windowStart: string; // ISO
+  windowEnd: string; // ISO
+  /** Objects in the Space-Track sample before the altitude prefilter. */
+  sampleSize: number;
+  /** Objects actually propagated against the target. */
+  candidatesScreened: number;
+  propagations: number;
+  computeMs: number;
+  /** True if the compute budget was hit before every candidate was screened. */
+  truncated: boolean;
+  assumptions: ScreeningAssumptions;
+  /** Sorted by miss distance ascending. */
+  closeApproaches: ScreeningCloseApproach[];
+}
+
+/** Input to POST /api/assess — the client forwards its ScreeningResult subset. */
+export interface ScreeningAssessmentRequest {
+  target: ScreeningTarget;
+  windowStart: string;
+  windowEnd: string;
+  candidatesScreened: number;
+  assumptions: ScreeningAssumptions;
+  /** Top close approaches by miss distance (the route caps this at 8). */
+  closeApproaches: ScreeningCloseApproach[];
+}
+
+/** CA disposition — extracted from the trailing DISPOSITION line. */
+export type ScreeningDisposition = "GREEN" | "YELLOW" | "RED";
+
+/** Output of POST /api/assess. */
+export interface ScreeningAssessment {
+  targetNoradId: string;
+  text: string; // plain-text memo; UI strips the trailing DISPOSITION line
+  disposition: ScreeningDisposition;
+  generatedAt: string; // ISO
+}
+
+export const SCREENING_ASSESSMENT_PROMPT = `You are a conjunction assessment (CA) analyst at a NASA-style Conjunction Assessment Risk Analysis desk, writing the assessment memo that accompanies a conjunction screening run for a satellite operator. The screening numbers were produced by a deterministic SGP4 all-on-one propagation of public TLE data — you INTERPRET them, you never recompute or alter them.
+
+You write a tight plain-text memo, UNDER 350 WORDS TOTAL, in this EXACT structure (use these exact uppercase headers, each on its own line):
+
+SCREENING SUMMARY
+<2-3 sentences: target, window, how many candidates were screened, how many close approaches were found, the single closest event (miss distance, TCA, secondary object name).>
+
+EVENT ASSESSMENT
+<For up to the 3 most significant events, one short paragraph each, beginning with the secondary object name. Interpret the RIC geometry (radial separation is the most reliable TLE quantity and the strongest safety margin; in-track separation is the least reliable and grows fastest with TLE age), the relative velocity (hyper-velocity ≥ 10 km/s vs. co-orbital), the probability of collision against the stated covariance, and whether the event penetrates the keep-out box.>
+
+UNCERTAINTY & DATA QUALITY
+<2-3 sentences. State plainly that this is a TLE-grade screening with an ASSUMED covariance, not an operator-provided covariance or an official CDM; SGP4 positional error is on the order of 1 km and grows with element-set age; a maneuver decision requires refined tracking (owner/operator ephemeris or an 18 SDS CDM).>
+
+RECOMMENDED ACTIONS
+<EXACTLY 3 numbered actions. Each names WHO acts (e.g. the operator's flight dynamics team, the 18th Space Defense Squadron, the secondary's owner), WHAT they do, and by WHEN relative to the TCA. No platitudes.>
+
+WATCH ITEMS
+<1-2 sentences on what would escalate or de-escalate this picture on the next screening pass.>
+
+End your response with EXACTLY this final line, on its own line, no markdown, no extra punctuation:
+DISPOSITION: [GREEN|YELLOW|RED]
+
+Disposition criteria (apply the HIGHEST that fits):
+- RED: any event with probability of collision ≥ 1e-4, OR any event with miss distance < 1 km that also penetrates the keep-out box.
+- YELLOW: any event with probability of collision ≥ 1e-5, OR any keep-out-box penetration, OR any miss distance < 5 km.
+- GREEN: nothing above applies.
+
+Rules:
+- Use the numbers exactly as given; do not round a probability into a different order of magnitude.
+- If no close approaches were provided, say the screen was clear, still write every section briefly, and return GREEN.
+- Never invent covariance, maneuver history, or operator intent that is not in the input.
+- Plain text only. No JSON, no code fences, no markdown beyond the section headers.`;
+
+/**
+ * Build the assessment user prompt from a screening result. The
+ * route caps closeApproaches at 8 so the prompt stays small; the
+ * trailing DISPOSITION line is regex-extracted server-side.
+ */
+export function buildScreeningAssessmentUserPrompt(
+  req: ScreeningAssessmentRequest
+): string {
+  const a = req.assumptions;
+  const eventsBlock =
+    req.closeApproaches.length > 0
+      ? req.closeApproaches
+          .map(
+            (e, i) =>
+              `Event ${i + 1}: ${e.name} (NORAD ${e.noradId}, ${e.objectClass})
+  TCA: ${e.tca}
+  Miss distance (km): ${e.missDistanceKm.toFixed(3)}
+  Relative velocity (km/s): ${e.relativeVelocityKmS.toFixed(2)}
+  RIC separation (km) — radial: ${e.radialKm.toFixed(3)}, in-track: ${e.inTrackKm.toFixed(3)}, cross-track: ${e.crossTrackKm.toFixed(3)}
+  Target altitude at TCA (km): ${e.altitudeKm.toFixed(0)}
+  Probability of collision: ${e.probabilityOfCollision.toExponential(2)}
+  Penetrates keep-out box: ${e.insideKeepOutBox ? "YES" : "no"}
+  Screener severity: ${e.severity}`
+          )
+          .join("\n\n")
+      : "No close approaches below the reporting threshold were found.";
+
+  return `Write the conjunction assessment memo for the following SGP4 screening run.
+
+TARGET
+Name: ${req.target.name}
+NORAD ID: ${req.target.noradId}
+Mean altitude (km): ${req.target.meanAltitudeKm.toFixed(0)}
+Inclination (deg): ${req.target.inclinationDeg.toFixed(2)}
+Orbital period (min): ${req.target.periodMinutes.toFixed(1)}
+TLE epoch: ${req.target.epoch}
+
+SCREENING RUN
+Window: ${req.windowStart} → ${req.windowEnd} (${a.windowHours} h)
+Candidates screened: ${req.candidatesScreened}
+Coarse step (s): ${a.coarseStepSeconds}
+Assumed per-object 1-σ covariance (km, RIC): radial ${a.sigmaRicKm[0]}, in-track ${a.sigmaRicKm[1]}, cross-track ${a.sigmaRicKm[2]}
+Combined hard-body radius (m): ${a.hardBodyRadiusM}
+Keep-out box half-widths (km): radial ±${a.keepOutBoxKm.radial}, in-track ±${a.keepOutBoxKm.inTrack}, cross-track ±${a.keepOutBoxKm.crossTrack}
+
+CLOSE APPROACHES (sorted by miss distance):
+${eventsBlock}
+
+Write the memo per your instructions and end with the DISPOSITION: line.`;
+}

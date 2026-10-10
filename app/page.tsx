@@ -19,6 +19,18 @@ import dynamic from "next/dynamic";
    existing 3-panel grid as a full-width section. The grid keeps
    its fixed `lg:h-[calc(100vh-7rem)]` viewport sizing — the
    new section pushes below the fold and is reached by scroll.
+
+   Session 5 — NASA / JSC upgrade. Seven bolt-on features:
+     1. Live SGP4 propagation + time warp  (inside OrbitalMap)
+     2. SGP4 Conjunction Screening Engine  (ConjunctionScreener)
+     3. ISS TOPO Console                   (IssConsole)
+     4. Fragmentation Family Tracker       (FragmentationTracker)
+     5. Orbital Density Profile            (DensityProfile)
+     6. Space Weather + Reentry Watch      (SpaceWeather)
+     7. Mission Ops Status Bar             (MissionStatusBar, header)
+   Panels 2-6 are full-width sections stacked below Fleet
+   Intelligence; none of them share state with the original four
+   panels, so the hackathon-proven layout above is untouched.
    ============================================================ */
 
 const OrbitalMap = dynamic(() => import("@/components/OrbitalMap"), {
@@ -57,23 +69,77 @@ const FleetDashboard = dynamic(() => import("@/components/FleetDashboard"), {
   ),
 });
 
+/* ---- Session 5 panels (all browser-only: clocks, SVG, SGP4) ---- */
+
+const MissionStatusBar = dynamic(
+  () => import("@/components/MissionStatusBar"),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="font-mono text-[0.65rem] text-text-muted">
+        Syncing mission clock…
+      </div>
+    ),
+  }
+);
+
+const IssConsole = dynamic(() => import("@/components/IssConsole"), {
+  ssr: false,
+  loading: () => <PanelPlaceholder label="Acquiring ISS state vector…" />,
+});
+
+const ConjunctionScreener = dynamic(
+  () => import("@/components/ConjunctionScreener"),
+  {
+    ssr: false,
+    loading: () => (
+      <PanelPlaceholder label="Loading conjunction screening engine…" />
+    ),
+  }
+);
+
+const DensityProfile = dynamic(() => import("@/components/DensityProfile"), {
+  ssr: false,
+  loading: () => <PanelPlaceholder label="Loading orbital density profile…" />,
+});
+
+const FragmentationTracker = dynamic(
+  () => import("@/components/FragmentationTracker"),
+  {
+    ssr: false,
+    loading: () => (
+      <PanelPlaceholder label="Loading fragmentation family tracker…" />
+    ),
+  }
+);
+
+const SpaceWeather = dynamic(() => import("@/components/SpaceWeather"), {
+  ssr: false,
+  loading: () => <PanelPlaceholder label="Loading space weather…" />,
+});
+
 export default function DashboardPage() {
   return (
     <main className="scanlines min-h-screen w-full bg-space px-4 py-4 md:px-6 md:py-6">
       {/* ---------- Header ---------- */}
-      <header className="mb-4 flex flex-col gap-1 md:mb-6">
-        <div className="flex items-baseline gap-3">
-          <h1 className="font-display text-2xl font-extrabold tracking-tight text-text-primary md:text-3xl">
-            SPACE<span className="text-safe">DEBRIS</span>
-          </h1>
-          <span className="font-mono text-xs text-safe blink-cursor">
-            LIVE
-          </span>
+      <header className="mb-4 flex flex-col gap-3 md:mb-6 lg:flex-row lg:items-end lg:justify-between">
+        <div className="flex flex-col gap-1 lg:shrink-0">
+          <div className="flex items-baseline gap-3">
+            <h1 className="font-display text-2xl font-extrabold tracking-tight text-text-primary md:text-3xl">
+              SPACE<span className="text-safe">DEBRIS</span>
+            </h1>
+            <span className="font-mono text-xs text-safe blink-cursor">
+              LIVE
+            </span>
+          </div>
+          <p className="font-mono text-xs text-text-secondary md:text-sm lg:whitespace-nowrap">
+            AI-powered real-time orbital collision risk dashboard · live
+            Space-Track.org data
+          </p>
         </div>
-        <p className="font-mono text-xs text-text-secondary md:text-sm">
-          AI-powered real-time orbital collision risk dashboard · live
-          Space-Track.org data
-        </p>
+
+        {/* Session 5 — Feature 7: mission clocks + subsystem health */}
+        <MissionStatusBar />
       </header>
 
       {/* ---------- Panel grid ----------
@@ -112,6 +178,35 @@ export default function DashboardPage() {
       <div className="mt-4 md:mt-6">
         <FleetDashboard />
       </div>
+
+      {/* ---------- Session 5 — NASA / JSC upgrade (full-width sections) ----------
+          Each panel renders its own glass-card + heading bar and owns its
+          own data fetching, so they can be reordered or removed freely. */}
+
+      {/* Feature 3 — ISS TOPO Console */}
+      <div className="mt-4 md:mt-6">
+        <IssConsole />
+      </div>
+
+      {/* Feature 2 — SGP4 Conjunction Screening Engine (+ AI CA memo) */}
+      <div className="mt-4 md:mt-6">
+        <ConjunctionScreener />
+      </div>
+
+      {/* Feature 5 — Orbital Density Profile */}
+      <div className="mt-4 md:mt-6">
+        <DensityProfile />
+      </div>
+
+      {/* Feature 4 — Fragmentation Family Tracker */}
+      <div className="mt-4 md:mt-6">
+        <FragmentationTracker />
+      </div>
+
+      {/* Feature 6 — Space Weather + Reentry Watch */}
+      <div className="mt-4 md:mt-6">
+        <SpaceWeather />
+      </div>
     </main>
   );
 }
@@ -123,6 +218,15 @@ function PanelHeading({ children }: { children: React.ReactNode }) {
       <h2 className="font-mono text-[0.7rem] font-semibold uppercase tracking-widest text-text-secondary">
         {children}
       </h2>
+    </div>
+  );
+}
+
+/* Loading shell for the full-width Session 5 panels (dynamic import). */
+function PanelPlaceholder({ label }: { label: string }) {
+  return (
+    <div className="glass-card p-4 font-mono text-sm text-text-secondary">
+      {label}
     </div>
   );
 }
