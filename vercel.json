@@ -6,6 +6,21 @@
     },
     "app/api/conjunctions/route.ts": {
       "maxDuration": 30
+    },
+    "app/api/screen/route.ts": {
+      "maxDuration": 30
+    },
+    "app/api/assess/route.ts": {
+      "maxDuration": 30
+    },
+    "app/api/iss/route.ts": {
+      "maxDuration": 30
+    },
+    "app/api/spaceweather/route.ts": {
+      "maxDuration": 30
+    },
+    "app/api/health/route.ts": {
+      "maxDuration": 30
     }
   }
 }
