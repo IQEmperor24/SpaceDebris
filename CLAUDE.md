@@ -2,7 +2,7 @@
 # Holy Grail Context File for Claude Code (Opus)
 # READ THIS ENTIRELY BEFORE RESPONDING TO ANY PROMPT
 # Last updated: End of Session 5 — NASA / JSC upgrade (7 bolt-on features)
-# Phases 1, 2, 3 COMPLETE · Session 5 features 1-7 COMPLETE (branch: feature/nasa-jsc-upgrade)
+# Phases 1, 2, 3 COMPLETE · Session 5 features 1-7 COMPLETE and LIVE on main
 
 ---
 
@@ -151,8 +151,8 @@ Context: HackHCC judges + HCC dean connected Aayush with NASA/JSC staff.
 Goal: strengthen the proven product with REAL orbital mechanics
 (deterministic SGP4 physics) next to the existing Claude features, using
 JSC vocabulary correctly (TOPO, TCA, Pc, RIC, DAM/PDAM, CARA, 18 SDS).
-Built in a Claude Code cloud session on branch feature/nasa-jsc-upgrade.
-NOT yet merged to main — merging to main = production deploy.
+Built in a Claude Code cloud session on branch feature/nasa-jsc-upgrade,
+merged to main (commit 260229c) and LIVE at space-debris-two.vercel.app.
 
 ### Feature 1 — Live SGP4 Propagation + Time Warp (3D map) ✅
 - components/OrbitalMap.tsx (only existing file edited)
@@ -578,8 +578,13 @@ Revenue impact: TRILLION DOLLAR
   itself because nobody else could in that container. Rule 8 ("never let
   Claude Code run terminal commands") is a LOCAL-workflow rule; in cloud
   sessions the agent must build + test before pushing.
-- Work landed on branch feature/nasa-jsc-upgrade, NOT main. Vercel builds
-  a PREVIEW deploy for the branch. Production deploy = merge to main.
+- Work landed on branch feature/nasa-jsc-upgrade first (Vercel PREVIEW
+  deploy), then was merged to main = production deploy.
+- Merge gotcha on Windows: the branch existed only on GitHub, so
+  `git merge feature/nasa-jsc-upgrade` failed with "not something we can
+  merge". Use `git merge origin/<branch>` after `git fetch origin`.
+- After a cloud-session push to main, run `git pull origin main` locally
+  before editing anything.
 - Pattern that worked: shared pure library first (lib/orbital.ts, with a
   node test against a real ISS TLE), API contracts second
   (lib/prompts.ts), THEN parallel feature agents on disjoint files, each
