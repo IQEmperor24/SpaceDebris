@@ -291,6 +291,17 @@ export async function fetchTLEs(limit: number): Promise<SpaceTrackTLE[]> {
 }
 
 /**
+ * Health probe: ONE real gp query that deliberately BYPASSES the shared
+ * dataset cache, so /api/health measures live Space-Track round-trip
+ * time and sees an outage as soon as its own cache expires.
+ */
+export async function probeGp(): Promise<SpaceTrackTLE[]> {
+  return spaceTrackGet<SpaceTrackTLE[]>(
+    "class/gp/orderby/EPOCH%20desc/limit/1/format/json"
+  );
+}
+
+/**
  * Look up a single object for the risk scorer.
  * Numeric query -> NORAD_CAT_ID; otherwise wildcard name match (~~).
  * Returns null if nothing matches.

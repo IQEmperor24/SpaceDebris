@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
-import { fetchTLEs } from "@/lib/spacetrack";
+import { probeGp } from "@/lib/spacetrack";
+import type {
+  HealthStatus,
+  SpaceTrackHealth,
+  SpaceTrackHealthStatus,
+} from "@/lib/health";
 
 /* ============================================================
    GET /api/health
@@ -9,7 +14,10 @@ import { fetchTLEs } from "@/lib/spacetrack";
    REGION readout in the page header (components/MissionStatusBar).
 
    Checks performed per (uncached) request:
-   1. spaceTrack — times ONE real catalog query, fetchTLEs(1),
+   1. spaceTrack — times ONE real catalog query, probeGp() (an
+      UNCACHED limit-1 gp query — the shared dataset cache in
+      lib/spacetrack.ts is bypassed on purpose so this measures
+      live round-trip time),
       i.e. the single newest-epoch element set in the gp class.
         ONLINE    query succeeded in < 4000 ms
         DEGRADED  query succeeded but took >= 4000 ms
@@ -58,39 +66,15 @@ const PROBE_TIMEOUT_MS = 12_000;
    Types — the API contract shared with MissionStatusBar.tsx
    ------------------------------------------------------------ */
 
-export type SpaceTrackHealthStatus = "ONLINE" | "DEGRADED" | "OFFLINE";
-export type AnthropicHealthStatus = "READY" | "NOT CONFIGURED";
-
-export interface SpaceTrackHealth {
-  status: SpaceTrackHealthStatus;
-  /** Round-trip time of the fetchTLEs(1) probe; null when it failed. */
-  latencyMs: number | null;
-  /** EPOCH string of the newest element set in the gp class; null when unavailable. */
-  newestEpoch: string | null;
-  /** Human-readable reason for DEGRADED / OFFLINE. Never contains credentials. */
-  detail?: string;
-}
-
-export interface AnthropicHealth {
-  status: AnthropicHealthStatus;
-}
-
-export interface HealthStatus {
-  /** ISO timestamp of when the checks actually ran (cached responses keep it). */
-  checkedAt: string;
-  /** Vercel deployment region, or "local" outside Vercel. */
-  region: string;
-  /** Uptime of this serverless instance / dev server process. */
-  uptimeSeconds: number;
-  spaceTrack: SpaceTrackHealth;
-  anthropic: AnthropicHealth;
-  /** True when both SPACETRACK_USERNAME and SPACETRACK_PASSWORD are set. */
-  spaceTrackCredentials: boolean;
-}
-
-/* ------------------------------------------------------------
-   Cache (module-scoped, single key)
-   ------------------------------------------------------------ */
+/* Health contract types live in lib/health.ts (pure, importable by the
+   client). Re-exported here as TYPES ONLY for backwards compatibility. */
+export type {
+  SpaceTrackHealthStatus,
+  AnthropicHealthStatus,
+  SpaceTrackHealth,
+  AnthropicHealth,
+  HealthStatus,
+} from "@/lib/health";
 
 interface CacheEntry {
   data: HealthStatus;
@@ -199,7 +183,7 @@ async function probeSpaceTrack(): Promise<SpaceTrackHealth> {
 
   const started = performance.now();
   try {
-    const rows = await withTimeout(fetchTLEs(1), PROBE_TIMEOUT_MS);
+    const rows = await withTimeout(probeGp(), PROBE_TIMEOUT_MS);
     const latencyMs = Math.round(performance.now() - started);
 
     const first = Array.isArray(rows) && rows.length > 0 ? rows[0] : null;

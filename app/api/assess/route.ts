@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 import { getAnthropic, CLAUDE_MODEL, DEFAULT_TEMPERATURE } from "@/lib/anthropic";
 import {
@@ -91,13 +92,15 @@ function setCached(key: string, data: ScreeningAssessment): void {
 
 /** Composite cache key — see header comment for rationale. */
 function buildCacheKey(req: ScreeningAssessmentRequest): string {
-  return (
-    req.target.noradId +
-    "|" +
-    req.windowStart +
-    "|" +
-    req.closeApproaches.map((e) => e.noradId + "@" + e.tca).join(",")
-  );
+  // Identity prefix keeps keys readable; the digest binds EVERY value
+  // Claude reasons about (names, miss, Pc, severity, flags, assumptions)
+  // so a crafted POST can never seed a memo that a later legitimate
+  // request for the same events would read back from cache.
+  const digest = createHash("sha256")
+    .update(JSON.stringify(req))
+    .digest("hex")
+    .slice(0, 32);
+  return req.target.noradId + "|" + req.windowStart + "|" + digest;
 }
 
 /**
@@ -109,12 +112,13 @@ function extractDisposition(text: string): ScreeningDisposition {
   // Take the LAST disposition line (the memo ends with it) and reject
   // an echoed template such as "DISPOSITION: [GREEN|YELLOW|RED]" so a
   // body mention can never understate the picture. Default YELLOW.
-  const re = /DISPOSITION\s*:\s*\[?\s*(GREEN|YELLOW|RED)\s*(\]|\||$)/gim;
+  // Whole-word colour match (tolerates "[RED]", "**RED**", "RED."), the
+  // echoed template "[GREEN|YELLOW|RED]" is excluded by the "|" lookahead.
+  const re = /DISPOSITION\s*:\s*\[?\s*\**\s*(GREEN|YELLOW|RED)(?![A-Za-z])(?!\s*\|)/gi;
   let last: RegExpExecArray | null = null;
   let m: RegExpExecArray | null;
   while ((m = re.exec(text)) !== null) last = m;
   if (!last) return "YELLOW";
-  if (last[2] === "|") return "YELLOW";
   return last[1].toUpperCase() as ScreeningDisposition;
 }
 
@@ -147,6 +151,24 @@ function isNonEmptyString(v: unknown): v is string {
   return typeof v === "string" && v.trim().length > 0 && v.length <= MAX_STRING_LENGTH;
 }
 
+/**
+ * Collapse control characters / newlines / runs of whitespace so a
+ * client-controlled string (object names come from the client's copy
+ * of the screening result) can only ever appear as ONE flat token in
+ * the structured prompt — never as a forged extra field or event.
+ */
+function cleanString(v: string): string {
+  return v
+    .replace(/[\u0000-\u001f\u007f]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** ISO-8601-ish timestamp that Date can parse. */
+function isIsoLike(v: unknown): v is string {
+  return isNonEmptyString(v) && Number.isFinite(Date.parse(v));
+}
+
 function parseTarget(v: unknown): ScreeningTarget | null {
   if (!isRecord(v)) return null;
   if (!isNonEmptyString(v.noradId) || !isNonEmptyString(v.name)) return null;
@@ -157,10 +179,13 @@ function parseTarget(v: unknown): ScreeningTarget | null {
   ) {
     return null;
   }
-  if (!isNonEmptyString(v.epoch)) return null;
+  if (!isIsoLike(v.epoch)) return null;
+  const noradId = cleanString(v.noradId);
+  const name = cleanString(v.name);
+  if (!noradId || !name) return null;
   return {
-    noradId: v.noradId.trim(),
-    name: v.name.trim(),
+    noradId,
+    name,
     meanAltitudeKm: v.meanAltitudeKm,
     inclinationDeg: v.inclinationDeg,
     periodMinutes: v.periodMinutes,
@@ -208,7 +233,7 @@ function parseApproach(v: unknown): ScreeningCloseApproach | null {
   if (typeof v.objectClass !== "string" || !OBJECT_CLASSES.has(v.objectClass)) {
     return null;
   }
-  if (!isNonEmptyString(v.tca)) return null;
+  if (!isIsoLike(v.tca)) return null;
   const numericKeys = [
     "missDistanceKm",
     "relativeVelocityKmS",
@@ -223,9 +248,12 @@ function parseApproach(v: unknown): ScreeningCloseApproach | null {
   }
   if (typeof v.insideKeepOutBox !== "boolean") return null;
   if (typeof v.severity !== "string" || !SEVERITIES.has(v.severity)) return null;
+  const noradId = cleanString(v.noradId);
+  const name = cleanString(v.name);
+  if (!noradId || !name) return null;
   return {
-    noradId: v.noradId.trim(),
-    name: v.name.trim(),
+    noradId,
+    name,
     objectClass: v.objectClass as ScreeningObjectClass,
     tca: v.tca.trim(),
     missDistanceKm: v.missDistanceKm as number,
@@ -259,7 +287,7 @@ function validateBody(body: unknown): Validation {
     };
   }
 
-  if (!isNonEmptyString(body.windowStart) || !isNonEmptyString(body.windowEnd)) {
+  if (!isIsoLike(body.windowStart) || !isIsoLike(body.windowEnd)) {
     return { ok: false, error: "windowStart and windowEnd must be ISO strings." };
   }
   if (!isFiniteNumber(body.candidatesScreened) || body.candidatesScreened < 0) {

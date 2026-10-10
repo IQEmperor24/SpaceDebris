@@ -5,7 +5,7 @@ import type {
   AnthropicHealthStatus,
   HealthStatus,
   SpaceTrackHealthStatus,
-} from "@/app/api/health/route";
+} from "@/lib/health";
 import {
   dateToJulian,
   dayOfYear,
