@@ -331,7 +331,7 @@ function KpCard({ status }: { status: SpaceWeatherStatus }) {
           <Label>
             PLANETARY <span className="normal-case">Kp</span>
           </Label>
-          <div className="font-mono text-[0.55rem] text-text-muted">
+          <div className="font-mono text-[0.6rem] text-text-muted">
             NOAA estimated · 3-hour index
           </div>
         </div>
@@ -342,14 +342,14 @@ function KpCard({ status }: { status: SpaceWeatherStatus }) {
         )}
       </div>
       <div
-        className="mt-1 font-display text-3xl font-bold leading-tight"
+        className="mt-1 font-display text-2xl font-bold leading-tight"
         style={{ color: valueColor }}
         data-testid="kp-value"
       >
         {fmtFixed(kpValue, 2)}
       </div>
       <KpBar kp={kpValue} />
-      <div className="mt-1 flex justify-between font-mono text-[0.55rem] text-text-muted">
+      <div className="mt-1 flex justify-between font-mono text-[0.6rem] text-text-muted">
         <span>0</span>
         <span>quiet ≤ 4 · storm ≥ {KP_STORM_THRESHOLD}</span>
         <span>9</span>
@@ -372,7 +372,7 @@ function F107Card({ status }: { status: SpaceWeatherStatus }) {
       <div className="flex items-start justify-between gap-2">
         <div>
           <Label>F10.7 SOLAR FLUX</Label>
-          <div className="font-mono text-[0.55rem] text-text-muted">
+          <div className="font-mono text-[0.6rem] text-text-muted">
             10.7 cm radio flux · EUV proxy
           </div>
         </div>
@@ -383,13 +383,13 @@ function F107Card({ status }: { status: SpaceWeatherStatus }) {
         )}
       </div>
       <div
-        className="mt-1 font-display text-3xl font-bold leading-tight"
+        className="mt-1 font-display text-2xl font-bold leading-tight"
         style={{ color: value === null ? "#888888" : "#E0E0E0" }}
         data-testid="f107-value"
       >
         {fmtFixed(value, 1, " sfu")}
       </div>
-      <div className="mt-2 font-mono text-[0.55rem] leading-snug text-text-muted">
+      <div className="mt-2 font-mono text-[0.6rem] leading-snug text-text-muted">
         &lt;{F107_LOW_MAX} LOW · &lt;{F107_MODERATE_MAX} MODERATE · &lt;
         {F107_ELEVATED_MAX} ELEVATED · ≥{F107_ELEVATED_MAX} HIGH
       </div>
@@ -422,7 +422,7 @@ function DragRegimeCard({ status }: { status: SpaceWeatherStatus }) {
       <div className="flex items-start justify-between gap-2">
         <div>
           <Label>ATMOSPHERIC DRAG REGIME</Label>
-          <div className="font-mono text-[0.55rem] text-text-muted">
+          <div className="font-mono text-[0.6rem] text-text-muted">
             LEO thermospheric density · heuristic
           </div>
         </div>
@@ -433,7 +433,7 @@ function DragRegimeCard({ status }: { status: SpaceWeatherStatus }) {
       <p className="mt-2 font-mono text-[0.65rem] leading-relaxed text-text-secondary">
         {REGIME_EXPLANATION[regime]}
       </p>
-      <div className="mt-2 font-mono text-[0.55rem] leading-snug text-text-muted">
+      <div className="mt-2 font-mono text-[0.6rem] leading-snug text-text-muted">
         {regime === "UNKNOWN" ? (
           // Both indices missing: no base regime was applied, so do not
           // claim one (the route normally 503s here; this guards a
@@ -628,7 +628,7 @@ export default function SpaceWeather() {
               <F107Card status={status} />
               <DragRegimeCard status={status} />
             </div>
-            <div className="mt-2 font-mono text-[0.55rem] text-text-muted">
+            <div className="mt-2 font-mono text-[0.6rem] text-text-muted">
               Source: NOAA Space Weather Prediction Center · fetched{" "}
               {fmtIsoUtc(status.fetchedAt)} · server cache{" "}
               {/* mirrors /api/spaceweather: 15 min when both feeds parsed,

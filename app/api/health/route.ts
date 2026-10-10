@@ -33,9 +33,9 @@ import { fetchTLEs } from "@/lib/spacetrack";
    client component can `import type` it without pulling any
    server code into the browser bundle).
 
-   Cache: 60 s, single key, per serverless instance — keeps the
+   Cache: 5 min, single key, per serverless instance — keeps the
    probe at <= 1 Space-Track query per minute per instance
-   (rate limit is 30/min, 300/hr) and matches the client's 60 s
+   (rate limit is 30/min, 300/hr) and matches the client's 5-min
    poll. OFFLINE results are cached too so a Space-Track outage
    is not amplified by the dashboard.
 

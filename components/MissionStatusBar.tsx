@@ -30,13 +30,14 @@ import {
    full width and simply wraps (flex-wrap). From lg the header is a
    row shared with the title block (h1 + 82-char subtitle, ~630 px at
    md:text-sm). Both are flex items with flex-shrink 1, so they shrink
-   in PROPORTION to their content width: the strip would get ~55 % of
-   the row and break onto two lines on every lg viewport below
-   ~1490 px (1280 × 800 laptops, 1366 × 768 projectors). The spec wants
-   ONE dense line from 1024 px up, so from lg the strip is `shrink-0`
-   (it keeps its natural width; the subtitle wraps instead) and the
-   lower-priority segments are revealed per breakpoint so the row can
-   never overflow horizontally:
+   in PROPORTION to their content width. The title block keeps its
+   natural width (page.tsx gives it lg:shrink-0 + a no-wrap subtitle)
+   so the header stays 60 px tall and the 3-panel grid below keeps
+   fitting the viewport; the strip takes the remaining width and may
+   wrap onto a second line (two lines ≈ 34 px, still shorter than the
+   title block, so header height never changes). Lower-priority
+   segments are revealed per breakpoint so one line is the common case
+   from ~1280 px up:
      lg  (≥ 1024)  UTC time · GMST · JD · | · SPACE-TRACK · CLAUDE  ≈ 510 px
      xl  (≥ 1280)  + calendar date / DOY, + TLE age                 ≈ 740 px
      2xl (≥ 1536)  + | REGION (everything)                         ≈ 845 px
@@ -55,8 +56,8 @@ import {
    render never depends on Date (no SSR/CSR mismatch even though
    the page mounts this with ssr:false).
 
-   Health (GET /api/health, polled on mount + every 60 s, matching
-   the route's 60 s cache):
+   Health (GET /api/health, polled on mount + every 5 min, matching
+   the route's 5-min cache):
    - SPACE-TRACK LED  ONLINE / DEGRADED / OFFLINE
        + "TLE <age> old": age of the newest element-set EPOCH in
        the gp catalog, a proxy for catalog freshness. Space-Track
@@ -82,7 +83,7 @@ import {
      specific object's element set.
    ============================================================ */
 
-const HEALTH_POLL_MS = 60_000;
+const HEALTH_POLL_MS = 5 * 60_000; // matches the route's 5-min probe cache
 /** A newest EPOCH at most this far ahead of the client clock is skew, not a predictive set. */
 const EPOCH_SKEW_TOLERANCE_MS = 60_000;
 
@@ -373,7 +374,7 @@ export default function MissionStatusBar() {
   return (
     <div
       data-testid="mission-status-bar"
-      className="flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-[0.65rem] text-text-secondary lg:shrink-0"
+      className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1 font-mono text-[0.65rem] text-text-secondary lg:justify-end"
     >
       {/* ---- Clocks ---- */}
       <span

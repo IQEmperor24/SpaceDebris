@@ -667,7 +667,7 @@ export default function OrbitalMap() {
 
       {/* Loading / error overlays */}
       {loading && (
-        <div className="absolute inset-0 flex items-center justify-center font-mono text-xs text-text-secondary blink-cursor">
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center font-mono text-xs text-text-secondary blink-cursor">
           Propagating orbits via SGP4
         </div>
       )}
