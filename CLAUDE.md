@@ -1,8 +1,8 @@
 # SpaceDebris — CLAUDE.md
 # Holy Grail Context File for Claude Code (Opus)
 # READ THIS ENTIRELY BEFORE RESPONDING TO ANY PROMPT
-# Last updated: End of Session 4 — Post Houston Hackathon
-# Phases 1, 2, 3 COMPLETE
+# Last updated: End of Session 5 — NASA / JSC upgrade (7 bolt-on features)
+# Phases 1, 2, 3 COMPLETE · Session 5 features 1-7 COMPLETE (branch: feature/nasa-jsc-upgrade)
 
 ---
 
@@ -146,6 +146,110 @@ When he responds — prepare NASA demo version immediately.
 
 ---
 
+## Session 5 — NASA / JSC Upgrade ✅ COMPLETE (7 bolt-on features)
+Context: HackHCC judges + HCC dean connected Aayush with NASA/JSC staff.
+Goal: strengthen the proven product with REAL orbital mechanics
+(deterministic SGP4 physics) next to the existing Claude features, using
+JSC vocabulary correctly (TOPO, TCA, Pc, RIC, DAM/PDAM, CARA, 18 SDS).
+Built in a Claude Code cloud session on branch feature/nasa-jsc-upgrade.
+NOT yet merged to main — merging to main = production deploy.
+
+### Feature 1 — Live SGP4 Propagation + Time Warp (3D map) ✅
+- components/OrbitalMap.tsx (only existing file edited)
+- Debris dots now MOVE: every object re-propagated at simulated time,
+  position buffer updated in place (DynamicDrawUsage), 4 Hz when warped
+- Controls bottom-left: LIVE · 1× · 10× · 60× · 600× + SIM UTC clock
+  with offset readout "(+2h 14m)" when not live
+- Shaders, uSize 2.0, blending, OrbitControls, zone filter, tooltip,
+  FPS/counter UNCHANGED. Colours/zones stay as classified at load.
+- Demo move: click 600× — a LEO orbit sweeps in ~9 seconds
+
+### Feature 2 — SGP4 Conjunction Screening Engine + AI CA Memo ✅
+- lib/screening.ts (pure), app/api/screen/route.ts (GET),
+  app/api/assess/route.ts (POST, Claude), components/ConjunctionScreener.tsx
+- GET /api/screen?target=ISS&hours=24 — deterministic all-on-one screen:
+  altitude-band prefilter → 60 s coarse SGP4 sweep → golden-section
+  refinement of each local minimum → miss distance, relative velocity,
+  RIC separation in the TARGET frame, probability of collision (2-D
+  encounter-plane integral, assumed TLE-grade covariance σ RIC
+  0.3 / 1.0 / 0.3 km per object, HBR 20 m), NASA ISS keep-out box test
+  (±2 km R × ±25 km I × ±25 km C). Severity: CRITICAL Pc≥1e-4 or <1 km;
+  HIGH Pc≥1e-5 or box penetration; MEDIUM <10 km; LOW.
+- 0.5 µs per SGP4 call → a 24 h screen of the 2,000-object sample runs
+  in ~1-2 s server-side. 20 s compute budget, truncated flag, 5-min cache.
+- POST /api/assess — Claude writes a CARA-style 5-section CA memo with a
+  GREEN/YELLOW/RED DISPOSITION line (prompt: SCREENING_ASSESSMENT_PROMPT
+  in lib/prompts.ts). This is "Phase 5 lite" — predicting conjunctions
+  from TLEs before a CDM is published.
+- UI footnote states plainly: not an operational CDM.
+
+### Feature 3 — ISS TOPO Console ✅
+- lib/iss.ts, app/api/iss/route.ts, components/IssConsole.tsx
+- Live 1 Hz ISS state vector (lat/lon/alt/vel/period/incl) from SGP4
+- SVG equirectangular ground track (±46 min, seam-safe) + JSC marker
+- NEXT PASS — JSC HOUSTON (29.5593 N, 95.09 W): AOS/max-el/LOS, compass,
+  countdown, following passes. Geometric pass ≥10°; visibility not evaluated.
+- CONJUNCTION STATUS — public CDMs involving NORAD 25544 graded against
+  NASA ISS thresholds: RED Pc ≥ 1e-4 (DAM/PDAM planning), YELLOW ≥ 1e-5.
+  Empty public feed = NOMINAL (valid state, not an error).
+- Zero Claude cost. /api/iss cached 5 min (60 s on partial failure).
+
+### Feature 4 — Fragmentation Family Tracker ✅
+- lib/fragmentation.ts, components/FragmentationTracker.tsx
+- Groups the live 2,000-object sample by launch designator
+  (OBJECT_ID "1999-025DEV" → "1999-025") and attributes families to a
+  catalog of 11 major breakup events (Fengyun-1C ASAT 2007, Cosmos 2251 /
+  Iridium 33 collision 2009, Cosmos 1408 ASAT 2021, CZ-6A breakups 2022 +
+  2024, NOAA 16, DMSP F13, Pegasus HAPS, Ariane 1 / SPOT 1, Yunhai 1-02)
+- Two-factor attribution (designator AND name regex) so a designator
+  collision can never mislabel a family
+- Stats: debris share of sample, attributed share, events present
+
+### Feature 5 — Orbital Density Profile ✅
+- lib/density.ts, components/DensityProfile.tsx
+- ORDEM-style histograms: altitude 100-2000 km (50 km bins) and
+  inclination 0-180° (5° bins), hover tooltips with debris / payload /
+  rocket-body split, annotations: 700-1000 km KESSLER-CRITICAL shell,
+  ISS 420 km, Starlink 550 km, ISS 51.6°, Molniya 63.4°, SUN-SYNC 96-100°
+- Single-hue bars (#5FB3FF); green/amber/red reserved for annotations
+- Caption states it is a live sample, not the ~46,000-object catalog
+
+### Feature 6 — Space Weather + Reentry Watch ✅
+- lib/spaceweather.ts, app/api/spaceweather/route.ts, components/SpaceWeather.tsx
+- NOAA SWPC (no key): planetary Kp + G-scale, F10.7 solar flux,
+  derived ATMOSPHERIC DRAG REGIME (LOW/MODERATE/ELEVATED/HIGH)
+  Endpoints: services.swpc.noaa.gov/products/noaa-planetary-k-index.json
+             services.swpc.noaa.gov/json/f107_cm_flux.json
+  Parsers pick the NEWEST time_tag (not the last row). 15-min cache.
+- REENTRY WATCH: lowest-perigee objects (<300 km) in the sample with
+  first-order lifetime from the TLE mean-motion derivative
+  (da/dt = (2/3)·a·(ṅ/n)); IMMINENT badge < 30 d. Labelled as an
+  optimistic estimate — real decay accelerates.
+
+### Feature 7 — Mission Ops Status Bar ✅
+- app/api/health/route.ts, components/MissionStatusBar.tsx
+- Header strip: UTC clock · date · DOY · GMST · Julian Date
+- Health LEDs: SPACE-TRACK (timed fetchTLEs(1) probe, ONLINE/DEGRADED/
+  OFFLINE + newest catalog epoch age) · CLAUDE (key configured — no API
+  call) · REGION. /api/health cached 60 s, never returns 500,
+  error details secret-scrubbed.
+
+### Shared foundation added in Session 5
+- lib/orbital.ts — PURE orbital mechanics helpers used by every new
+  feature: JD/GMST, TLE elements, SGP4 propagation with guards for the
+  satellite.js 5.0.0 error paths, RIC frame, look angles, decay
+  estimate, 2-D probability of collision, NASA ISS thresholds + keep-out
+  box, JSC site constants. 42 node tests pass against a real ISS TLE.
+- lib/debrisClient.ts — one shared browser-side /api/debris sample for
+  panels 4/5/6 (one request, 10-min TTL, in-flight dedupe)
+- lib/prompts.ts — Screening* API contracts + SCREENING_ASSESSMENT_PROMPT
+- app/page.tsx — header holds MissionStatusBar; panels 3,2,5,4,6 are
+  full-width sections below Fleet Intelligence. Original 3-panel grid +
+  Fleet Intelligence untouched.
+- vercel.json — maxDuration 30 for screen/assess/iss/spaceweather/health
+
+---
+
 ## Complete File Structure
 C:\Users\user\SpaceDebris\
 - .env.local                    DONE — Real API keys (NEVER commit)
@@ -168,15 +272,33 @@ C:\Users\user\SpaceDebris\
     - cascade/route.ts          DONE — Phase 1 Kessler simulation
     - maneuver/route.ts         DONE — Phase 2 maneuver recommendations
     - fleet/route.ts            DONE — Phase 3 fleet intelligence
+    - screen/route.ts           DONE — S5 F2 SGP4 conjunction screening (GET)
+    - assess/route.ts           DONE — S5 F2 Claude CA memo (POST)
+    - iss/route.ts              DONE — S5 F3 ISS TLE + ISS CDMs
+    - spaceweather/route.ts     DONE — S5 F6 NOAA SWPC Kp + F10.7
+    - health/route.ts           DONE — S5 F7 subsystem health
 - lib/
   - anthropic.ts                DONE — Model: claude-sonnet-4-6
   - spacetrack.ts               DONE — gp class, auth working
   - prompts.ts                  DONE — ALL prompts + types (DO NOT INLINE)
+  - orbital.ts                  DONE — S5 shared SGP4 / RIC / Pc physics (PURE)
+  - debrisClient.ts             DONE — S5 shared browser debris sample
+  - screening.ts                DONE — S5 F2 screening algorithm (PURE)
+  - iss.ts                      DONE — S5 F3 ground track, passes, CA grading
+  - fragmentation.ts            DONE — S5 F4 breakup catalog + grouping
+  - density.ts                  DONE — S5 F5 histogram binning
+  - spaceweather.ts             DONE — S5 F6 SWPC parsers + drag regime
 - components/
-  - OrbitalMap.tsx              DONE — Three.js 3D, uSize 2.0
+  - OrbitalMap.tsx              DONE — Three.js 3D, uSize 2.0 + S5 live propagation
   - RiskScorer.tsx              DONE — Risk scoring + maneuver plan
   - AlertFeed.tsx               DONE — Conjunction feed + cascade sim
   - FleetDashboard.tsx          DONE — Phase 3 fleet intelligence
+  - MissionStatusBar.tsx        DONE — S5 F7 header clocks + health LEDs
+  - IssConsole.tsx              DONE — S5 F3 ISS TOPO console
+  - ConjunctionScreener.tsx     DONE — S5 F2 screening UI + AI memo
+  - DensityProfile.tsx          DONE — S5 F5 altitude / inclination charts
+  - FragmentationTracker.tsx    DONE — S5 F4 family table
+  - SpaceWeather.tsx            DONE — S5 F6 Kp / F10.7 / reentry watch
 
 ---
 
@@ -219,6 +341,18 @@ ANTHROPIC_API_KEY was updated in BOTH .env.local AND Vercel Session 4.
 17. Phase 3: fleet intelligence dashboard built
 18. ANTHROPIC_API_KEY switched to Aayush's own account
     (aunt's key ran out of credits during testing)
+
+### Session 5 (NASA / JSC upgrade)
+19. Seven bolt-on features built on branch feature/nasa-jsc-upgrade
+20. satellite.js 5.0.0 quirks guarded in lib/orbital.ts:
+    sgp4() returns an ARRAY [false,false] on some errors (not an object);
+    satrec.ndot is the RAW TLE field — parse ṅ/2 from line 1 cols 34-43
+21. SWPC parsers pick the newest time_tag, not the last array row
+22. ISS pass predictor: max elevation tracked during the backward AOS walk
+    for passes already in progress
+23. Reentry watch requires 0 < perigee < 300 km (rejects corrupt TLEs)
+24. Screening keeps the closest approach per secondary (co-orbital objects
+    would otherwise produce one row per revolution)
 
 ---
 
@@ -280,6 +414,9 @@ ANTHROPIC_API_KEY was updated in BOTH .env.local AND Vercel Session 4.
 - Maneuver plan: ~$0.008
 - Fleet intelligence: ~$0.012
 - Conjunction summary (x10 per refresh): ~$0.04/refresh
+- Session 5 features 1, 3, 4, 5, 6, 7: $0 (deterministic physics, no Claude)
+- Session 5 screening (GET /api/screen): $0 (pure SGP4)
+- Session 5 AI conjunction assessment memo (POST /api/assess): ~$0.01
 
 ---
 
@@ -343,6 +480,11 @@ Phase 1: Kessler Cascade Simulator ✅
 Phase 2: Maneuver Recommendation Engine ✅
 Phase 3: Fleet Intelligence Dashboard ✅
 
+### Session 5 — NASA / JSC upgrade ✅ (7 features, see above)
+Phase 5 "lite" is now REAL: GET /api/screen predicts close approaches
+from TLEs before Space-Track publishes a CDM. Full Phase 5 (continuous
+all-vs-all propagation, persistence, alerting) remains below.
+
 ### NEXT — Phase 4: Operator Alert Network
 Satellite operators subscribe to real-time alerts for
 their specific assets. When a conjunction involves their
@@ -403,6 +545,33 @@ Revenue impact: TRILLION DOLLAR
 - Sequential phases: each builds cleanly on previous
 - Never start new phase without npm run build clean
 
+### Session 5 (cloud session — NASA / JSC upgrade)
+- Built in a Claude Code CLOUD session (claude.ai/code), not the local
+  terminal: the agent ran npm install / tsc / npm run build / Playwright
+  itself because nobody else could in that container. Rule 8 ("never let
+  Claude Code run terminal commands") is a LOCAL-workflow rule; in cloud
+  sessions the agent must build + test before pushing.
+- Work landed on branch feature/nasa-jsc-upgrade, NOT main. Vercel builds
+  a PREVIEW deploy for the branch. Production deploy = merge to main.
+- Pattern that worked: shared pure library first (lib/orbital.ts, with a
+  node test against a real ISS TLE), API contracts second
+  (lib/prompts.ts), THEN parallel feature agents on disjoint files, each
+  followed by an adversarial review + fix pass, then one build + one
+  Playwright run with every /api/* mocked (the sandbox cannot reach
+  Space-Track, Anthropic or NOAA).
+- Reviews caught real bugs before build: SWPC "last row ≠ newest row",
+  in-progress ISS pass max-elevation decay, negative-perigee TLEs leaking
+  into the reentry table, label casing that broke text assertions.
+- The 2,000 most-recent-epoch gp sample is dominated by recently updated
+  payloads (Starlink), so the family tracker and density profile describe
+  a SAMPLE, and every panel says so on screen. Never claim full-catalog.
+- NOAA SWPC JSON shapes were implemented from documentation (host blocked
+  in the sandbox). After the first production deploy, open the Space
+  Weather panel once and confirm Kp / F10.7 render; if not, only
+  parseKpResponse / parseF107Response in lib/spaceweather.ts need touching.
+- Node 22 runs TypeScript directly: node --experimental-strip-types x.ts
+  (great for testing pure lib files without a test framework).
+
 ---
 
 ## Git Repository
@@ -430,7 +599,10 @@ for the space age.
 Sessions 1-2: MVP built and deployed ($20.36)
 Session 3:    Shader fixed, dots crisp ($0)
 Session 4:    Phases 1-3 complete ($4.04)
-Total:        ~$24 invested
+Session 5:    NASA / JSC upgrade — 7 features, real SGP4 physics
+              (Claude Code cloud session; $0 Anthropic API spend —
+              nothing was called at runtime in the sandbox)
+Total:        ~$24 invested in API credits
 
 The problem is existential.
 The market is trillion dollar.
