@@ -46,9 +46,9 @@ import {
    - Pc is the short-encounter 2-D estimate; rows with relative
      speed < 0.1 km/s (co-orbital) carry a † because that
      approximation is indicative only there.
-   - The reporting threshold (50 km) is not part of the API payload,
-     so it is read from DEFAULT_SCREENING_OPTIONS, which is exactly
-     what the route uses.
+   - The reporting threshold comes from result.assumptions
+     (reportThresholdKm), i.e. exactly what the route used; the
+     DEFAULT_SCREENING_OPTIONS value is only the pre-run fallback.
 
    Terminology: TCA = time of closest approach; Pc = probability of
    collision; RIC = radial / in-track / cross-track (target frame);
@@ -651,7 +651,7 @@ export default function ConjunctionScreener() {
                   ✓ CLEAR
                 </span>
                 <span>
-                  CLEAR SCREEN — no approaches within {DEFAULT_SCREENING_OPTIONS.reportThresholdKm} km of{" "}
+                  CLEAR SCREEN — no approaches within {result.assumptions?.reportThresholdKm ?? DEFAULT_SCREENING_OPTIONS.reportThresholdKm} km of{" "}
                   {result.target?.name || run?.target || "the target"} over the next {fmtFixed(resultHours, 0)} h.
                 </span>
               </div>

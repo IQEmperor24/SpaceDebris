@@ -32,10 +32,15 @@ import {
             entry's nameMatch pattern.
       The two-factor check means a typo'd / recycled designator
       can never mislabel an unrelated family as, say, FENGYUN 1C.
-   4. Families are sorted by object count (desc), tie-broken by
-      debris count (desc), then designator (asc) for determinism,
-      and capped at maxFamilies (default 10). Groups with a
-      single object are dropped — one object is not a "family".
+   4. Ranking is DEBRIS-FIRST: families that carry cataloged
+      debris (debrisCount ≥ 1) or are attributed to a breakup event
+      rank above pure payload / rocket-body launch groups (e.g. a
+      Starlink batch), which only appear when fewer than
+      MIN_DEBRIS_FAMILIES debris families exist in the sample.
+      Within each tier: object count (desc), debris count (desc),
+      then designator (asc) for determinism; capped at maxFamilies
+      (default 10). Groups with a single object are dropped — one
+      object is not a "family".
 
    Assumptions (surfaced verbatim in the panel footnote)
    - The sample is the 2,000 most-recently-updated element sets
@@ -128,7 +133,7 @@ export interface FamilyReport {
    * the table.
    */
   attributedDebrisObjects: number;
-  /** Sorted desc by count, then debrisCount; count ≥ 2; ≤ maxFamilies. */
+  /** Debris/attributed families first, then by count desc, debrisCount desc; count ≥ 2; ≤ maxFamilies. */
   families: DebrisFamily[];
   /** Distinct catalog events attributed to at least one group (sample-wide). */
   catalogEventsPresent: number;
@@ -370,6 +375,13 @@ interface GroupAccumulator {
  * Only OBJECT_ID, OBJECT_NAME, APOAPSIS, PERIAPSIS and INCLINATION
  * are read; every other SpaceTrackTLE field is ignored.
  */
+/**
+ * Minimum number of debris-bearing / attributed families required
+ * before pure payload or rocket-body launch groups are hidden from
+ * the ranked table (they still count toward sample-wide stats).
+ */
+export const MIN_DEBRIS_FAMILIES = 3;
+
 export function groupFamilies(
   objects: SpaceTrackTLE[],
   maxFamilies = 10
@@ -464,11 +476,25 @@ export function groupFamilies(
     return 0;
   });
 
+  // Debris-first: this is a FRAGMENTATION tracker, so launch groups
+  // that carry no cataloged debris (intact constellation batches)
+  // only fill the table when the sample holds too few debris families.
+  const debrisFamilies = families.filter(
+    (f) => f.debrisCount > 0 || f.event !== null
+  );
+  const otherFamilies = families.filter(
+    (f) => !(f.debrisCount > 0 || f.event !== null)
+  );
+  const ranked =
+    debrisFamilies.length >= MIN_DEBRIS_FAMILIES
+      ? debrisFamilies
+      : [...debrisFamilies, ...otherFamilies];
+
   return {
     totalObjects,
     debrisObjects,
     attributedDebrisObjects,
-    families: families.slice(0, cap),
+    families: ranked.slice(0, cap),
     catalogEventsPresent: eventsPresent.size,
   };
 }

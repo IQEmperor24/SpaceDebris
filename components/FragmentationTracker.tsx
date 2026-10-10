@@ -370,7 +370,7 @@ export default function FragmentationTracker() {
             {/* ---- Family table ---- */}
             <div>
               <div className="mb-2 font-mono text-[0.6rem] uppercase tracking-widest text-text-muted">
-                Top {MAX_FAMILIES} launch families by object count
+                Top {MAX_FAMILIES} fragmentation families · debris-bearing first
               </div>
               {report.families.length > 0 ? (
                 <div className="overflow-x-auto">
@@ -475,7 +475,9 @@ export default function FragmentationTracker() {
               reporting. Attribution requires BOTH the launch designator and a
               parent-name match; mean altitude = (apoapsis + periapsis) / 2 from
               the gp fields. Stat cells are computed over the whole sample; the
-              table lists only the top {MAX_FAMILIES} multi-object launch
+              table ranks families that carry cataloged debris (or a known
+              breakup) first and lists at most {MAX_FAMILIES}; intact launch
+              batches only appear when the sample holds fewer than three such
               families.
             </p>
           </div>

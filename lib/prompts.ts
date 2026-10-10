@@ -667,6 +667,8 @@ export interface ScreeningAssumptions {
   keepOutBoxKm: { radial: number; inTrack: number; crossTrack: number };
   coarseStepSeconds: number;
   windowHours: number;
+  /** Approaches with a miss distance above this (km) are not reported. */
+  reportThresholdKm: number;
 }
 
 /** Output of GET /api/screen?target=<name|NORAD>&hours=<n>. */

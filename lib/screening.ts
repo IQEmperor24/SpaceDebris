@@ -603,6 +603,7 @@ export function screenTarget(
     },
     coarseStepSeconds: stepSec,
     windowHours: opts.windowHours,
+    reportThresholdKm: opts.reportThresholdKm,
   };
 
   return {

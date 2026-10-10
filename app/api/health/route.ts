@@ -47,7 +47,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
-const HEALTH_CACHE_TTL_MS = 60 * 1000; // 60 s
+const HEALTH_CACHE_TTL_MS = 5 * 60 * 1000; // 5 min — one Space-Track probe per instance per 5 min (rate budget)
 const CACHE_KEY = "health";
 /** Probe succeeded slower than this => DEGRADED. */
 const DEGRADED_LATENCY_MS = 4000;

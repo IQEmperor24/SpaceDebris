@@ -23,7 +23,7 @@ import {
        windowStart, windowEnd, candidatesScreened,
        assumptions: { sigmaRicKm[3], hardBodyRadiusM,
                       keepOutBoxKm{radial,inTrack,crossTrack},
-                      coarseStepSeconds, windowHours },
+                      coarseStepSeconds, windowHours, reportThresholdKm },
        closeApproaches: ScreeningCloseApproach[]
      }
 
@@ -180,6 +180,7 @@ function parseAssumptions(v: unknown): ScreeningAssumptions | null {
   if (!isFiniteNumber(v.coarseStepSeconds) || !isFiniteNumber(v.windowHours)) {
     return null;
   }
+  if (!isFiniteNumber(v.reportThresholdKm)) return null;
   return {
     sigmaRicKm: [sigma[0], sigma[1], sigma[2]],
     hardBodyRadiusM: v.hardBodyRadiusM,
@@ -190,6 +191,7 @@ function parseAssumptions(v: unknown): ScreeningAssumptions | null {
     },
     coarseStepSeconds: v.coarseStepSeconds,
     windowHours: v.windowHours,
+    reportThresholdKm: v.reportThresholdKm,
   };
 }
 
@@ -262,7 +264,7 @@ function validateBody(body: unknown): Validation {
     return {
       ok: false,
       error:
-        "Invalid assumptions: expected sigmaRicKm[3], hardBodyRadiusM, keepOutBoxKm{radial,inTrack,crossTrack}, coarseStepSeconds, windowHours (all finite numbers).",
+        "Invalid assumptions: expected sigmaRicKm[3], hardBodyRadiusM, keepOutBoxKm{radial,inTrack,crossTrack}, coarseStepSeconds, windowHours, reportThresholdKm (all finite numbers).",
     };
   }
 

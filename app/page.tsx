@@ -123,7 +123,7 @@ export default function DashboardPage() {
     <main className="scanlines min-h-screen w-full bg-space px-4 py-4 md:px-6 md:py-6">
       {/* ---------- Header ---------- */}
       <header className="mb-4 flex flex-col gap-3 md:mb-6 lg:flex-row lg:items-end lg:justify-between">
-        <div className="flex flex-col gap-1">
+        <div className="flex flex-col gap-1 lg:shrink-0">
           <div className="flex items-baseline gap-3">
             <h1 className="font-display text-2xl font-extrabold tracking-tight text-text-primary md:text-3xl">
               SPACE<span className="text-safe">DEBRIS</span>
@@ -132,7 +132,7 @@ export default function DashboardPage() {
               LIVE
             </span>
           </div>
-          <p className="font-mono text-xs text-text-secondary md:text-sm">
+          <p className="font-mono text-xs text-text-secondary md:text-sm lg:whitespace-nowrap">
             AI-powered real-time orbital collision risk dashboard · live
             Space-Track.org data
           </p>
