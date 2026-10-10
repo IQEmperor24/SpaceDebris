@@ -121,7 +121,8 @@ function epochAgeLabel(epochIso: unknown, refIso: unknown): string {
   if (!epoch || !ref) return "epoch —";
   const hours = (ref.getTime() - epoch.getTime()) / 3_600_000;
   if (!Number.isFinite(hours)) return "epoch —";
-  if (Math.abs(hours) >= 72) return `epoch ${(hours / 24).toFixed(1)} d old`;
+  if (hours < 0) return `epoch ${Math.abs(hours).toFixed(1)} h ahead (predictive set)`;
+  if (hours >= 72) return `epoch ${(hours / 24).toFixed(1)} d old`;
   return `epoch ${hours.toFixed(1)} h old`;
 }
 
@@ -244,7 +245,7 @@ function ApproachRow({
       </td>
       <td className={`${cell} text-center`}>
         {event.insideKeepOutBox ? (
-          <span className="font-bold text-danger" title="Inside the NASA ISS keep-out box">
+          <span className="font-bold text-danger" title="Inside the ISS-standard screening box (±2 R × ±25 I × ±25 C km), applied to every target">
             ✓
           </span>
         ) : (
@@ -323,11 +324,17 @@ export default function ConjunctionScreener() {
   // Live clock for the "Δ from now" column — initialised in an effect.
   const [nowMs, setNowMs] = useState<number | null>(null);
 
+  // Only tick while there are TCA rows to count down to — the idle
+  // form must not re-render every second for the lifetime of the page.
   useEffect(() => {
+    if (!result || result.closeApproaches.length === 0) {
+      setNowMs(null);
+      return;
+    }
     setNowMs(Date.now());
     const id = setInterval(() => setNowMs(Date.now()), 1000);
     return () => clearInterval(id);
-  }, []);
+  }, [result]);
 
   /* ---- Screening run ---- */
   useEffect(() => {
@@ -460,7 +467,7 @@ export default function ConjunctionScreener() {
     ? `σ RIC ${fmtFixed(a.sigmaRicKm?.[0], 1)} / ${fmtFixed(a.sigmaRicKm?.[1], 1)} / ${fmtFixed(
         a.sigmaRicKm?.[2],
         1
-      )} km per object · HBR ${fmtFixed(a.hardBodyRadiusM, 0)} m · keep-out box ±${fmtFixed(
+      )} km per object · HBR ${fmtFixed(a.hardBodyRadiusM, 0)} m · screening box (ISS standard, every target) ±${fmtFixed(
         a.keepOutBoxKm?.radial,
         0
       )} × ±${fmtFixed(a.keepOutBoxKm?.inTrack, 0)} × ±${fmtFixed(a.keepOutBoxKm?.crossTrack, 0)} km`
@@ -646,13 +653,17 @@ export default function ConjunctionScreener() {
               <div className="flex flex-wrap items-center gap-3 rounded-md border border-safe/40 bg-safe/10 px-3 py-2 font-mono text-xs text-text-primary">
                 <span
                   className="rounded px-2 py-0.5 font-display text-[0.6rem] font-bold"
-                  style={{ color: "#00FF41", border: "1px solid #00FF41" }}
+                  style={{
+                    color: result.truncated ? "#FFB800" : "#00FF41",
+                    border: `1px solid ${result.truncated ? "#FFB800" : "#00FF41"}`,
+                  }}
                 >
-                  ✓ CLEAR
+                  {result.truncated ? "◐ PARTIAL" : "✓ CLEAR"}
                 </span>
                 <span>
-                  CLEAR SCREEN — no approaches within {result.assumptions?.reportThresholdKm ?? DEFAULT_SCREENING_OPTIONS.reportThresholdKm} km of{" "}
-                  {result.target?.name || run?.target || "the target"} over the next {fmtFixed(resultHours, 0)} h.
+                  {result.truncated
+                    ? `PARTIAL SCREEN — no approaches within ${result.assumptions?.reportThresholdKm ?? DEFAULT_SCREENING_OPTIONS.reportThresholdKm} km among the ${fmtInt(result.candidatesScreened)} candidates screened before the compute budget ran out; rerun with a shorter window for full coverage.`
+                    : `CLEAR SCREEN — no approaches within ${result.assumptions?.reportThresholdKm ?? DEFAULT_SCREENING_OPTIONS.reportThresholdKm} km of ${result.target?.name || run?.target || "the target"} over the next ${fmtFixed(resultHours, 0)} h.`}
                 </span>
               </div>
             )}

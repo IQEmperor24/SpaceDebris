@@ -648,7 +648,7 @@ export interface ScreeningCloseApproach {
   radialKm: number;
   inTrackKm: number;
   crossTrackKm: number;
-  /** Target altitude at TCA (km, mean-radius convention). */
+  /** Target geodetic height at TCA (km, WGS-84 ellipsoid). */
   altitudeKm: number;
   /** 0-1, under the stated TLE-grade covariance + hard-body radius. */
   probabilityOfCollision: number;

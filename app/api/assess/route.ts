@@ -106,9 +106,16 @@ function buildCacheKey(req: ScreeningAssessmentRequest): string {
  * missing — safer than GREEN, which would understate the picture.
  */
 function extractDisposition(text: string): ScreeningDisposition {
-  const match = text.match(/DISPOSITION\s*:\s*\[?\s*(GREEN|YELLOW|RED)/i);
-  if (!match) return "YELLOW";
-  return match[1].toUpperCase() as ScreeningDisposition;
+  // Take the LAST disposition line (the memo ends with it) and reject
+  // an echoed template such as "DISPOSITION: [GREEN|YELLOW|RED]" so a
+  // body mention can never understate the picture. Default YELLOW.
+  const re = /DISPOSITION\s*:\s*\[?\s*(GREEN|YELLOW|RED)\s*(\]|\||$)/gim;
+  let last: RegExpExecArray | null = null;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) last = m;
+  if (!last) return "YELLOW";
+  if (last[2] === "|") return "YELLOW";
+  return last[1].toUpperCase() as ScreeningDisposition;
 }
 
 /* ------------------------------------------------------------

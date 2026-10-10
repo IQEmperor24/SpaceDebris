@@ -42,10 +42,20 @@ export function getDebrisSample(force = false): Promise<DebrisSample> {
   if (!force && cached && Date.now() - cached.fetchedAt.getTime() < SAMPLE_TTL_MS) {
     return Promise.resolve(cached);
   }
-  if (!force && inflight) {
-    return inflight;
+  if (inflight) {
+    if (!force) return inflight;
+    // Forced refresh while a request is in flight: queue behind it so
+    // two responses can never race to overwrite `cached` out of order
+    // (and so the server never sees two concurrent sample requests).
+    const previous = inflight;
+    const chained = previous.catch(() => null).then(() => startRequest());
+    inflight = chained;
+    return chained;
   }
+  return startRequest();
+}
 
+function startRequest(): Promise<DebrisSample> {
   const request = (async (): Promise<DebrisSample> => {
     const res = await fetch(`/api/debris?limit=${DEBRIS_SAMPLE_LIMIT}`);
     let data: { objects?: unknown; error?: unknown } = {};

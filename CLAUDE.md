@@ -231,7 +231,7 @@ NOT yet merged to main — merging to main = production deploy.
 - Header strip: UTC clock · date · DOY · GMST · Julian Date
 - Health LEDs: SPACE-TRACK (timed fetchTLEs(1) probe, ONLINE/DEGRADED/
   OFFLINE + newest catalog epoch age) · CLAUDE (key configured — no API
-  call) · REGION. /api/health cached 60 s, never returns 500,
+  call) · REGION. /api/health cached 5 min (client polls every 5 min), never returns 500,
   error details secret-scrubbed.
 
 ### Shared foundation added in Session 5
@@ -247,6 +247,33 @@ NOT yet merged to main — merging to main = production deploy.
   full-width sections below Fleet Intelligence. Original 3-panel grid +
   Fleet Intelligence untouched.
 - vercel.json — maxDuration 30 for screen/assess/iss/spaceweather/health
+  (+ debris and fleet, which also export maxDuration in code)
+- lib/spacetrack.ts — rate-limit hygiene (auth logic UNCHANGED): one
+  shared in-flight login for concurrent cold callers; shared per-instance
+  dataset caches with in-flight dedupe (gp sample keyed by limit, 10 min;
+  ONE cdm_public pull of 100 rows, 60 s, sliced per caller); 15 s fetch
+  timeout. Steady-state Space-Track budget for one viewer, one instance:
+  ~100 requests/hr (limit 300/hr), cold page load ~5 requests (was ~10).
+
+### Session 5 verification (done in the cloud session, not by hand)
+- npm run build: CLEAN (11 routes, / = 2.3 kB, first-load JS 89.6 kB)
+- npx tsc --noEmit: 0 errors
+- Node unit tests (node --experimental-strip-types, scratch dir, not in
+  repo): orbital 42, spacetrack 10, screening (unit + brute-force
+  cross-check + route + lifecycle), iss 14, spaceweather 25, density 15
+  + render smoke, fragmentation 9 — ALL PASS
+- Playwright (headless Chromium, every /api/* mocked because the sandbox
+  cannot reach Space-Track / Anthropic / NOAA): 15/15 steps pass —
+  original 4 panels regression (zone filter, risk score, maneuver plan,
+  cascade sim, fleet stats) + all 7 new features; 0 console errors;
+  desktop 1440/1280/1024 no horizontal overflow, header 60 px, 3-panel
+  grid still fits the viewport; mobile 390 px no overflow.
+- Headless SwiftShader draws the map's point sprites as large blobs —
+  the UNTOUCHED main branch renders identically under SwiftShader, so
+  that is a software-renderer artifact, not a Feature 1 change. Real
+  GPUs render the crisp uSize 2.0 dots as before.
+- NOT verified here: live Space-Track / Anthropic / NOAA responses.
+  First production check after deploy: open every panel once.
 
 ---
 

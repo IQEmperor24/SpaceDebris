@@ -97,7 +97,7 @@ export interface StateVector {
 export interface GeodeticPoint {
   latitudeDeg: number;
   longitudeDeg: number; // normalized to [-180, 180]
-  altitudeKm: number; // height above the WGS-72 ellipsoid (satellite.js)
+  altitudeKm: number; // height above the WGS-84 ellipsoid (satellite.js eciToGeodetic)
 }
 
 /** Radial / In-track / Cross-track unit vectors (ECI components). */
@@ -316,8 +316,9 @@ export function minutesSinceEpoch(satrec: SatRec, date: Date): number {
 
 /**
  * Derive human-readable elements from a Space-Track TLE row.
- * Uses the TLE lines (not the gp string fields) so results are
- * self-consistent with what SGP4 actually propagates.
+ * Uses the TLE lines (not the gp string fields); mean motion is the
+ * TLE's Kozai value so the derived period / apsides match the
+ * catalog's PERIOD / APOAPSIS / PERIAPSIS to within a few hundred m.
  */
 export function tleElements(
   tle: Pick<SpaceTrackTLE, "TLE_LINE1" | "TLE_LINE2"> &
@@ -327,9 +328,18 @@ export function tleElements(
   const satrec = satrecIn ?? parseTle(tle.TLE_LINE1, tle.TLE_LINE2);
   if (!satrec) return null;
 
-  const meanMotionRevPerDay = (satrec.no * MINUTES_PER_DAY) / (2 * Math.PI);
-  const periodMinutes = (2 * Math.PI) / satrec.no;
-  const nRadPerSec = satrec.no / 60;
+  // Human-readable elements use the TLE's own (Kozai) mean motion from
+  // line 2 cols 53-63 so period / SMA / apogee / perigee line up with
+  // Space-Track's MEAN_MOTION / PERIOD / APOAPSIS / PERIAPSIS. (sgp4init
+  // overwrites satrec.no with the un-Kozai'd Brouwer value, which is
+  // right for propagation but ~0.1 % off for display.)
+  const nKozai = parseFloat(tle.TLE_LINE2.substring(52, 63));
+  const meanMotionRevPerDay =
+    Number.isFinite(nKozai) && nKozai > 0
+      ? nKozai
+      : (satrec.no * MINUTES_PER_DAY) / (2 * Math.PI);
+  const periodMinutes = MINUTES_PER_DAY / meanMotionRevPerDay;
+  const nRadPerSec = (meanMotionRevPerDay * 2 * Math.PI) / SECONDS_PER_DAY;
   const semiMajorAxisKm = Math.cbrt(MU_EARTH_KM3_S2 / (nRadPerSec * nRadPerSec));
   const e = satrec.ecco;
 

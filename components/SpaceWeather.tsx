@@ -194,10 +194,16 @@ function computeReentryRows(
     TLE_LINE2: string;
     NORAD_CAT_ID?: string;
     OBJECT_NAME?: string;
+    PERIAPSIS?: string;
   }>
 ): ReentryRow[] {
   const rows: ReentryRow[] = [];
   for (const obj of objects) {
+    // Cheap prefilter on the gp PERIAPSIS string (same quantity to
+    // within a few km of model difference) so SGP4 initialisation
+    // runs only for objects near the watch band, not all 2,000.
+    const periStr = parseFloat(obj.PERIAPSIS ?? "");
+    if (Number.isFinite(periStr) && periStr >= PERIGEE_WATCH_KM + 25) continue;
     const el = tleElements(obj);
     if (!el) continue;
     // perigee ≤ 0 km is a corrupt element set (sub-surface perigee with

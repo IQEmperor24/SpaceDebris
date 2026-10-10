@@ -767,9 +767,11 @@ export default function IssConsole() {
   const ageLabel =
     ageHours === null
       ? "—"
-      : Math.abs(ageHours) >= 48
-        ? formatDuration(ageHours * 3_600_000)
-        : `${ageHours.toFixed(1)} h`;
+      : ageHours < 0
+        ? `${Math.abs(ageHours).toFixed(1)} h ahead (predictive set)`
+        : ageHours >= 48
+          ? formatDuration(ageHours * 3_600_000)
+          : `${ageHours.toFixed(1)} h`;
   const ageStale = ageHours !== null && ageHours > TLE_AGE_CAUTION_HOURS;
 
   const tleUnavailable = status !== null && tle === null;
@@ -878,7 +880,7 @@ export default function IssConsole() {
                       {elements ? ` · epoch ${formatUtc(elements.epoch)} UTC` : ""}
                     </span>
                     <span>
-                      SGP4 on the public Space-Track element set · TEME → geodetic (WGS-72) ·
+                      SGP4 on the public Space-Track element set · TEME → geodetic (WGS-84 ellipsoid; SGP4 WGS-72 constants) ·
                       positional error ~1 km, growing with epoch age
                     </span>
                   </div>

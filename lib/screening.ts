@@ -11,7 +11,7 @@ import {
   EARTH_EQUATORIAL_RADIUS_KM,
   ISS_KEEP_OUT_BOX_KM,
   MU_EARTH_KM3_S2,
-  altitudeKmFromEci,
+  geodeticFromEci,
   classifyObjectName,
   minutesSinceEpoch,
   parseTle,
@@ -583,7 +583,10 @@ export function screenTarget(
       radialKm: ric.radialKm,
       inTrackKm: ric.inTrackKm,
       crossTrackKm: ric.crossTrackKm,
-      altitudeKm: altitudeKmFromEci(best.target.position),
+      altitudeKm: geodeticFromEci(
+        best.target.position,
+        new Date(start.getTime() + best.tSec * 1000)
+      ).altitudeKm,
       probabilityOfCollision: pc,
       insideKeepOutBox,
       severity: gradeSeverity(pc, best.missKm, insideKeepOutBox),
