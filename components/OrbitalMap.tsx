@@ -5,6 +5,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import * as satellite from "satellite.js";
 import type { SpaceTrackTLE } from "@/lib/spacetrack";
+import { dateToJulian, formatDuration, formatUtc } from "@/lib/orbital";
 
 /* ============================================================
    Panel 1 — Live 3D Orbital Map (Three.js)
@@ -17,6 +18,23 @@ import type { SpaceTrackTLE } from "@/lib/spacetrack";
    - OrbitControls from three/examples/jsm/controls/OrbitControls
    - useRef for renderer/scene/camera/controls/points/objectData
    - cleanup: cancelAnimationFrame + controls.dispose + renderer.dispose
+
+   Session 5 — Feature 1: LIVE SGP4 propagation + time warp
+   - Every DebrisObject keeps its parsed SatRec. A simulation clock
+     lives in refs ONLY (never React state on the hot path). Each
+     animation frame advances simTime by realDt × timeWarp; every
+     1000 ms (1×) or 250 ms (warped) the whole VISIBLE set is
+     re-propagated with satellite.sgp4() straight into the live
+     position BufferAttribute (DynamicDrawUsage, zero per-tick
+     allocation beyond what satellite.js returns).
+   - LIVE locks the clock to wall time (Date.now() each frame, so a
+     throttled background tab cannot make LIVE drift). 1×/10×/60×/
+     600× free-run from the current sim time. Clock readout state
+     updates at most once per second.
+   - Colour and zone remain as classified at LOAD; only position
+     and altKm move. Positions are TLE-grade (≈1 km at epoch,
+     growing with element-set age) — a visualisation, not an
+     ephemeris product.
    ============================================================ */
 
 const DEBRIS_LIMIT = 2000;
@@ -25,6 +43,23 @@ const EARTH_RADIUS_KM = 6371;
 type Zone = "ALL" | "LEO" | "MEO" | "GEO";
 const ZONES: Zone[] = ["ALL", "LEO", "MEO", "GEO"];
 
+/* ---- Session 5: simulation clock / time-warp constants ---- */
+type TimeWarp = 1 | 10 | 60 | 600;
+const TIME_WARPS: TimeWarp[] = [1, 10, 60, 600];
+/** |simTime − now| below this (at 1×) counts as LIVE. */
+const LIVE_TOLERANCE_MS = 2000;
+/** Re-propagation cadence: 1 Hz at real time, 4 Hz when warped. */
+const PROPAGATE_INTERVAL_LIVE_MS = 1000;
+const PROPAGATE_INTERVAL_WARP_MS = 250;
+/**
+ * Clamp a single frame's dt (WARPED runs only) so a hidden/throttled tab cannot
+ * teleport the sim on resume. At 1× free-run dt × 1 is exact wall time, so the
+ * clamp is skipped there — otherwise a backgrounded tab would make 1× lag real
+ * time, flip the readout amber and un-highlight LIVE.
+ */
+const MAX_FRAME_DT_MS = 1000;
+const MINUTES_PER_DAY = 1440;
+
 interface DebrisObject {
   name: string;
   noradId: string;
@@ -32,6 +67,8 @@ interface DebrisObject {
   zone: Exclude<Zone, "ALL">;
   pos: [number, number, number];
   color: [number, number, number];
+  /** Parsed element set — re-propagated every tick by repropagate(). */
+  satrec: satellite.SatRec;
 }
 
 interface TooltipState {
@@ -93,6 +130,7 @@ function propagateOne(o: SpaceTrackTLE, now: Date, gmst: number): DebrisObject |
       zone: classifyZone(altKm),
       pos,
       color: riskColor(altKm),
+      satrec, // kept for live re-propagation (Session 5)
     };
   } catch {
     return null;
@@ -161,6 +199,62 @@ export default function OrbitalMap() {
   const [error, setError] = useState<string | null>(null);
   const [tooltip, setTooltip] = useState<TooltipState | null>(null);
 
+  // ---- Session 5: simulation clock — refs ONLY on the hot path ----
+  const simTimeMsRef = useRef(0); // set to Date.now() inside the setup effect, never at render
+  const timeWarpRef = useRef<TimeWarp>(1);
+  const liveLockRef = useRef(true); // true → clock snaps to wall time every frame
+  const lastFrameMsRef = useRef(0); // performance.now() of the previous frame
+  const lastPropagateMsRef = useRef(0); // performance.now() of the last repropagate()
+
+  // Readout state — written at most once per second (and on button clicks).
+  const [simClockText, setSimClockText] = useState("SIM -- UTC");
+  const [isLive, setIsLive] = useState(true);
+  const [timeWarp, setTimeWarp] = useState<TimeWarp>(1);
+
+  /** Mirror the sim clock refs into React state for the bottom-left readout. */
+  const publishClock = useCallback(() => {
+    const sim = simTimeMsRef.current;
+    const warp = timeWarpRef.current;
+    if (!Number.isFinite(sim)) {
+      // Should be unreachable (clock is always seeded from Date.now()),
+      // but never render "Invalid Date".
+      setSimClockText("SIM -- UTC");
+      setIsLive(false);
+      setTimeWarp(warp);
+      return;
+    }
+    const offset = sim - Date.now();
+    const live = warp === 1 && Math.abs(offset) < LIVE_TOLERANCE_MS;
+    let text = `SIM ${formatUtc(new Date(sim))} UTC`;
+    if (!live) {
+      // formatDuration already prefixes "-" for negative values.
+      text += ` (${offset >= 0 ? "+" : ""}${formatDuration(offset)})`;
+    }
+    setSimClockText(text);
+    setIsLive(live);
+    setTimeWarp(warp);
+  }, []);
+
+  /** LIVE: snap the sim clock back to wall time at 1× and lock it there. */
+  const handleLive = useCallback(() => {
+    simTimeMsRef.current = Date.now();
+    timeWarpRef.current = 1;
+    liveLockRef.current = true;
+    lastPropagateMsRef.current = 0; // force a re-propagation on the next frame
+    publishClock();
+  }, [publishClock]);
+
+  /** 1× / 10× / 60× / 600×: free-run from the CURRENT sim time at the new rate. */
+  const handleWarp = useCallback(
+    (w: TimeWarp) => {
+      timeWarpRef.current = w;
+      liveLockRef.current = false;
+      lastPropagateMsRef.current = 0; // force a re-propagation on the next frame
+      publishClock();
+    },
+    [publishClock]
+  );
+
   /** Rebuild the single Points geometry for the active zone filter. */
   const applyFilter = useCallback((z: Zone) => {
     const points = pointsRef.current;
@@ -183,7 +277,10 @@ export default function OrbitalMap() {
     }
 
     const geo = new THREE.BufferGeometry();
-    geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    // Positions are rewritten in place by repropagate() every tick → dynamic.
+    const positionAttr = new THREE.BufferAttribute(positions, 3);
+    positionAttr.setUsage(THREE.DynamicDrawUsage);
+    geo.setAttribute("position", positionAttr);
     geo.setAttribute("color", new THREE.BufferAttribute(colors, 3));
 
     points.geometry.dispose();
@@ -352,11 +449,109 @@ export default function OrbitalMap() {
     const ro = new ResizeObserver(resize);
     ro.observe(mount);
 
-    // Animation loop + FPS
+    // ---- Session 5: seed the simulation clock (Date.now() ONLY here, never at render) ----
+    simTimeMsRef.current = Date.now();
+    timeWarpRef.current = 1;
+    liveLockRef.current = true;
+    lastFrameMsRef.current = performance.now();
+    lastPropagateMsRef.current = performance.now();
+    publishClock();
+
+    /**
+     * Re-propagate every VISIBLE object to the simulation clock and write
+     * the result straight into the CURRENT geometry's position attribute
+     * (applyFilter swaps geometries, so we re-read points.geometry each
+     * call). No allocation inside the loop beyond what satellite.js
+     * returns. Colour + zone are deliberately NOT touched — they stay as
+     * classified at load; only position and altKm move (tooltips and any
+     * later applyFilter rebuild therefore see live values).
+     */
+    const repropagate = () => {
+      const filtered = filteredDataRef.current;
+      const attr = points.geometry.getAttribute("position") as
+        | THREE.BufferAttribute
+        | undefined;
+      // Not loaded yet, or geometry is mid-rebuild — try again next tick.
+      if (!attr || attr.count !== filtered.length) return;
+      const arr = attr.array as Float32Array;
+
+      const date = new Date(simTimeMsRef.current);
+      const jd = dateToJulian(date);
+      const gmst = satellite.gstime(date);
+
+      for (let i = 0; i < filtered.length; i++) {
+        const o = filtered[i];
+        const minutes = (jd - o.satrec.jdsatepoch) * MINUTES_PER_DAY;
+
+        let pv: satellite.PositionAndVelocity;
+        try {
+          pv = satellite.sgp4(o.satrec, minutes);
+        } catch {
+          continue; // keep the last good position
+        }
+        // Guards the decay case ({ position: false }) AND the upstream
+        // satellite.js 5.0.0 "[false, false]" array return (position is
+        // then undefined). Either way: keep the last good position.
+        if (!pv || typeof pv.position !== "object" || pv.position === null) continue;
+
+        const ecf = satellite.eciToEcf(pv.position, gmst);
+        const r = Math.sqrt(ecf.x * ecf.x + ecf.y * ecf.y + ecf.z * ecf.z);
+        if (!Number.isFinite(r) || r === 0) continue;
+        const altKm = r - EARTH_RADIUS_KM;
+        if (altKm < 0 || altKm > 60000) continue; // same sanity bounds as propagateOne
+
+        const k = altToSceneR(altKm) / r; // unit-direction × scene radius
+        // SAME axis mapping as propagateOne: ECF x->x, z->y, y->-z
+        const x = ecf.x * k;
+        const y = ecf.z * k;
+        const z = -ecf.y * k;
+        const j = i * 3;
+        arr[j] = x;
+        arr[j + 1] = y;
+        arr[j + 2] = z;
+        o.pos[0] = x;
+        o.pos[1] = y;
+        o.pos[2] = z;
+        o.altKm = altKm;
+      }
+      attr.needsUpdate = true;
+      // Points.raycast early-outs against the geometry's bounding sphere,
+      // which Three computes once and never refreshes for in-place updates.
+      // Keep it current so the hover tooltip keeps working as objects move.
+      points.geometry.computeBoundingSphere();
+    };
+
+    // Animation loop + FPS + simulation clock
     let frames = 0;
     let lastFpsTime = performance.now();
+    let lastClockPublish = lastFpsTime;
     const animate = () => {
       frameRef.current = requestAnimationFrame(animate);
+
+      // ---- Session 5: advance the simulation clock ----
+      const frameNow = performance.now();
+      if (liveLockRef.current) {
+        // LIVE: track wall-clock exactly (immune to rAF throttling).
+        simTimeMsRef.current = Date.now();
+      } else {
+        // Free-run. Clamp only when warped: at 1× the raw dt IS wall time
+        // (no teleport possible), so clamping there would only add drift.
+        const rawDt = frameNow - lastFrameMsRef.current;
+        const dt =
+          timeWarpRef.current === 1 ? rawDt : Math.min(rawDt, MAX_FRAME_DT_MS);
+        if (dt > 0) simTimeMsRef.current += dt * timeWarpRef.current;
+      }
+      lastFrameMsRef.current = frameNow;
+
+      const interval =
+        timeWarpRef.current === 1
+          ? PROPAGATE_INTERVAL_LIVE_MS
+          : PROPAGATE_INTERVAL_WARP_MS;
+      if (frameNow - lastPropagateMsRef.current >= interval) {
+        lastPropagateMsRef.current = frameNow;
+        repropagate();
+      }
+
       controls.update();
       renderer.render(scene, camera);
       frames++;
@@ -365,6 +560,11 @@ export default function OrbitalMap() {
         setFps(Math.round((frames * 1000) / (now - lastFpsTime)));
         frames = 0;
         lastFpsTime = now;
+      }
+      // Clock readout → React state at most once per second.
+      if (now - lastClockPublish >= 1000) {
+        lastClockPublish = now;
+        publishClock();
       }
     };
     animate();
@@ -420,12 +620,17 @@ export default function OrbitalMap() {
       controlsRef.current = null;
       pointsRef.current = null;
     };
-  }, [applyFilter]);
+  }, [applyFilter, publishClock]);
 
   // Re-filter when the zone changes
   useEffect(() => {
     zoneRef.current = zone;
     applyFilter(zone);
+    // Objects hidden by the previous filter were NOT re-propagated while
+    // hidden, so the rebuilt geometry holds their stale positions. Force a
+    // re-propagation on the very next frame (same trick as the warp buttons);
+    // animate() runs repropagate() before render, so the stale frame never shows.
+    lastPropagateMsRef.current = 0;
   }, [zone, applyFilter]);
 
   return (
@@ -467,10 +672,53 @@ export default function OrbitalMap() {
         </div>
       )}
       {error && (
-        <div className="absolute bottom-2 left-2 right-2 rounded-md border border-danger/40 bg-danger/10 px-3 py-2 font-mono text-xs text-danger">
+        // bottom-16 (64px) keeps the error banner clear of the time-warp
+        // controls below it: bottom-2 + clock line + gap-1 + button row ≈ 53px.
+        <div className="absolute bottom-16 left-2 right-2 rounded-md border border-danger/40 bg-danger/10 px-3 py-2 font-mono text-xs text-danger">
           {error}
         </div>
       )}
+
+      {/* Session 5 — time-warp controls + simulation clock (bottom-left).
+          Rendered AFTER the overlays so it stacks above the inset-0 loading
+          layer and stays clickable while the catalog is still loading. */}
+      <div className="absolute bottom-2 left-2 flex flex-col gap-1">
+        <div className="flex gap-1">
+          <button
+            type="button"
+            data-testid="timewarp-live"
+            onClick={handleLive}
+            className={`rounded border px-2 py-1 font-mono text-[0.65rem] tracking-wide transition-colors ${
+              isLive
+                ? "border-safe/60 bg-safe/15 text-safe"
+                : "border-glass bg-white/5 text-text-secondary hover:text-text-primary"
+            }`}
+          >
+            LIVE
+          </button>
+          {TIME_WARPS.map((w) => (
+            <button
+              key={w}
+              type="button"
+              data-testid={`timewarp-${w}`}
+              onClick={() => handleWarp(w)}
+              className={`rounded border px-2 py-1 font-mono text-[0.65rem] tracking-wide transition-colors ${
+                timeWarp === w
+                  ? "border-safe/60 bg-safe/15 text-safe"
+                  : "border-glass bg-white/5 text-text-secondary hover:text-text-primary"
+              }`}
+            >
+              {w}×
+            </button>
+          ))}
+        </div>
+        <div
+          data-testid="sim-clock"
+          className={`font-mono text-[0.65rem] ${isLive ? "text-safe" : "text-caution"}`}
+        >
+          {simClockText}
+        </div>
+      </div>
 
       {/* Hover tooltip */}
       {tooltip && (
