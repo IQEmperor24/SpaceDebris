@@ -1,8 +1,8 @@
 # SpaceDebris — CLAUDE.md
 # Holy Grail Context File for Claude Code (Opus)
 # READ THIS ENTIRELY BEFORE RESPONDING TO ANY PROMPT
-# Last updated: End of Session 5 — NASA / JSC upgrade (7 bolt-on features)
-# Phases 1, 2, 3 COMPLETE · Session 5 features 1-7 COMPLETE and LIVE on main
+# Last updated: End of Session 6 — SpaceX-recruiter upgrade (7 more features)
+# Phases 1, 2, 3 COMPLETE · Session 5 (7) LIVE on main · Session 6 (7) on branch feature/spacex-upgrade
 
 ---
 
@@ -274,6 +274,103 @@ merged to main (commit 260229c) and LIVE at space-debris-two.vercel.app.
   GPUs render the crisp uSize 2.0 dots as before.
 - NOT verified here: live Space-Track / Anthropic / NOAA responses.
   First production check after deploy: open every panel once.
+
+---
+
+## Session 6 — SpaceX-Recruiter Upgrade ✅ (7 features)
+Context: Aayush applied to dozens of SpaceX new-grad roles with SpaceDebris
+as the showcase project. SpaceX culture = first principles, real ops
+relevance (Starlink autonomous CA at Pc 1e-5, ~40 maneuvers/sat/yr),
+performance, testing discipline, honest assumptions. Recruiters open the
+GITHUB REPO first, then the live site — so this session also fixed the
+repo itself (README, tests, CI, public API docs).
+Built in a Claude Code cloud session on branch feature/spacex-upgrade
+(merge to main = production deploy; see Session 5 merge notes).
+
+### S6 Feature 1 — Starlink Constellation Monitor ✅
+- lib/starlink.ts, components/StarlinkMonitor.tsx
+- Public FCC shell table (Gen1 550/53, 540/53.2, 570/70, 560/97.6;
+  Gen2 525/53, 530/43, 535/33), sample objects classified per shell as
+  OPERATIONAL / ORBIT RAISING-LOWERING / DEORBITING / UNASSIGNED, per-shell
+  crossing-object exposure (debris / R/B / payload), SVG shell ladder.
+- Zero Claude cost. Phase is inferred from ONE element set (says so).
+
+### S6 Feature 2 — Autonomous Avoidance Planner ✅
+- lib/maneuver.ts, components/AvoidancePlanner.tsx (+ lib/screening.ts
+  now attaches targetStateEci / secondaryStateEci at TCA to each approach)
+- Clohessy-Wiltshire (Hill) linearised relative motion → displacement at
+  TCA for an in-track impulse Δv applied τ before TCA; VERIFIED LIVE
+  against two-body propagation (lib/orbital twoBodyPropagate).
+- Trade space: burn lead {12h…30m} × Δv {1…100 cm/s} × prograde/retrograde
+  → new miss + Pc (same assumed covariance as the screen). Decision rule:
+  Starlink's Pc ≥ 1e-5 (STARLINK_PC_MANEUVER_THRESHOLD). Recommends the
+  minimum-Δv burn that clears the threshold; propellant via Tsiolkovsky
+  and burn time for vehicle presets (Starlink V2 Mini-class / V1.5-class /
+  generic hydrazine bus — public estimates, labelled).
+- Pc sensitivity curve vs covariance scale with a DILUTION REGION flag.
+- Zero Claude cost. "Planning aid, not flight software" on screen.
+
+### S6 Feature 3 — Launch COLA Screening ✅
+- lib/launch.ts, app/api/cola/route.ts, components/LaunchCola.tsx
+- Sites: SLC-40, LC-39A, SLC-4E, Starbase. Orbits: Starlink 550/53,
+  Gen2 530/43, ISS 420/51.64, SSO 560/97.6. For every launch minute in a
+  60/120/240-min window: insertion at T+9 min, 20° downrange, in the
+  plane through the site (raanThroughPosition), two-body coast 20 min,
+  screened at 30 s steps against the catalog sample (altitude prefilter).
+  NO-GO < 5 km, CAUTION < 25 km, else GO; next clear window reported.
+- GET /api/cola?site=&orbit=&minutes= (5-min cache, maxDuration 30,
+  compute budget + truncated flag). Simplified model — labelled.
+
+### S6 Feature 4 — Orbital Lifetime & FCC 5-Year Disposal Compliance ✅
+- lib/lifetime.ts, components/DisposalCompliance.tsx
+- Vallado exponential atmosphere (Table 8-4) × crude solar-activity factor
+  (LOW 0.5 / MEAN 1 / HIGH 2.5, default from live F10.7), circular-orbit
+  decay da/dt = −√(μa)·ρ·B integrated adaptively to 120 km or a 500-year
+  cap. Ballistic presets (Starlink-class B 0.04 m²/kg, 3U CubeSat, 1,000 kg
+  bus, dense fragment). Checks: FCC 5-year post-mission disposal (2022)
+  and the legacy 25-year guideline. Decay curve + lifetime ladder.
+- Sanity anchor: Starlink-class at 550 km, mean activity ≈ 5 years.
+
+### S6 Feature 5 — Public API: OpenAPI + /docs + rate limit + CORS ✅
+- lib/apiSpec.ts (single source for the OpenAPI 3.1 doc AND the docs
+  page), lib/rateLimit.ts (pure token bucket), app/api/openapi/route.ts,
+  app/docs/page.tsx (server component), middleware.ts (Edge: 120 req/min
+  per IP on /api/*, X-RateLimit-* headers, 429 JSON, CORS for GET/OPTIONS).
+- Every route documented with params, response example, curl, cost
+  (deterministic vs Claude) and cache. Link "API docs →" in the jump nav.
+
+### S6 Feature 6 — Engineering rigor pack ✅
+- tests/*.test.ts (node:test, zero deps, "@/" alias hook in
+  tests/register.mjs), package.json scripts "test" + "typecheck",
+  .github/workflows/ci.yml (typecheck → test → build; no secrets needed),
+  .nvmrc (22), README.md (architecture diagram, features, physics +
+  assumptions, API, engineering, local dev — NO credentials or emails).
+- npm test must stay green: it is the recruiter-facing proof.
+
+### S6 Feature 7 — System Telemetry ✅
+- lib/telemetry.ts (client bus: map tick ms, FPS, per-route latency via
+  timedFetch), components/SystemTelemetry.tsx, lib/spacetrack.ts request
+  accounting (getSpaceTrackStats) surfaced as spaceTrackBudget on EVERY
+  /api/health response (live even when the probe is cached).
+- Shows Space-Track budget (last hour / 300, last minute / 30, cache hit
+  rate, cookie age), orbit-propagation tick p50/p95 + throughput + frame
+  budget, API latency table, on-demand client SGP4 benchmark.
+- OrbitalMap.tsx: 3-line hook (recordMapTick / recordMapFps) — shaders etc.
+  still untouched.
+
+### Shared foundation added in Session 6
+- lib/orbital.ts: STARLINK_PC_MANEUVER_THRESHOLD, siteEci,
+  circularOrbitState, raanThroughPosition (ascending pass),
+  argumentOfLatitude, twoBodyPropagate (universal variables, Vallado
+  Alg. 8), meanMotionRadPerSec — 21 node checks (period round-trip to
+  < 1 cm, energy/h conservation, hyperbolic, site-in-plane).
+- app/page.tsx: jump nav (anchors for all 11 full-width panels + API
+  docs link); Session 6 panels mounted: avoidance, cola, starlink,
+  disposal after the screener; telemetry last.
+- vercel.json: app/api/cola/route.ts maxDuration 30.
+
+### Session 6 verification
+(filled in at the end of the session — see below)
 
 ---
 
