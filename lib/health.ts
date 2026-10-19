@@ -25,6 +25,19 @@ export interface AnthropicHealth {
   status: AnthropicHealthStatus;
 }
 
+/** Live Space-Track request budget for the serving instance (Session 6). */
+export interface SpaceTrackBudget {
+  requestsLastHour: number;
+  requestsLastMinute: number;
+  hourlyLimit: number;
+  perMinuteLimit: number;
+  lastLoginAt: string | null;
+  sessionCookieAgeSeconds: number | null;
+  sharedCacheEntries: number;
+  sharedCacheHits: number;
+  sharedCacheMisses: number;
+}
+
 export interface HealthStatus {
   /** ISO timestamp of when the checks actually ran (cached responses keep it). */
   checkedAt: string;
@@ -36,6 +49,11 @@ export interface HealthStatus {
   anthropic: AnthropicHealth;
   /** True when both SPACETRACK_USERNAME and SPACETRACK_PASSWORD are set. */
   spaceTrackCredentials: boolean;
+  /**
+   * Live request-budget counters, refreshed on EVERY response (never
+   * cached with the probe). Optional so older clients keep working.
+   */
+  spaceTrackBudget?: SpaceTrackBudget;
 }
 
 /* ------------------------------------------------------------

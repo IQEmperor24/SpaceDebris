@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { probeGp } from "@/lib/spacetrack";
+import { probeGp, getSpaceTrackStats } from "@/lib/spacetrack";
 import type {
   HealthStatus,
   SpaceTrackHealth,
@@ -217,7 +217,8 @@ async function probeSpaceTrack(): Promise<SpaceTrackHealth> {
 export async function GET(): Promise<NextResponse> {
   const cached = getCached();
   if (cached) {
-    return NextResponse.json(cached);
+    // Budget counters are live even when the probe is served from cache.
+    return NextResponse.json({ ...cached, spaceTrackBudget: getSpaceTrackStats() });
   }
 
   try {
@@ -236,7 +237,7 @@ export async function GET(): Promise<NextResponse> {
     };
 
     setCached(result);
-    return NextResponse.json(result);
+    return NextResponse.json({ ...result, spaceTrackBudget: getSpaceTrackStats() });
   } catch (err) {
     // probeSpaceTrack() never throws, so this only guards the
     // bookkeeping above — but a health endpoint must never 500.
@@ -254,6 +255,6 @@ export async function GET(): Promise<NextResponse> {
       spaceTrackCredentials:
         hasEnv("SPACETRACK_USERNAME") && hasEnv("SPACETRACK_PASSWORD"),
     };
-    return NextResponse.json(fallback);
+    return NextResponse.json({ ...fallback, spaceTrackBudget: getSpaceTrackStats() });
   }
 }

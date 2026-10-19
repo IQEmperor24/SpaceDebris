@@ -655,6 +655,14 @@ export interface ScreeningCloseApproach {
   /** True if |R|,|I|,|C| all fall inside the NASA ISS keep-out box. */
   insideKeepOutBox: boolean;
   severity: ThreatLevel;
+  /**
+   * Session 6 — ECI (TEME) states of both objects AT TCA, km and km/s,
+   * so the Autonomous Avoidance Planner can re-evaluate Pc after a
+   * hypothetical burn without re-running the screen. Filled by
+   * /api/screen; NOT forwarded to Claude (the assess route drops them).
+   */
+  targetStateEci?: { position: [number, number, number]; velocity: [number, number, number] };
+  secondaryStateEci?: { position: [number, number, number]; velocity: [number, number, number] };
 }
 
 /** Every assumption the screener bakes in — shown verbatim in the UI. */

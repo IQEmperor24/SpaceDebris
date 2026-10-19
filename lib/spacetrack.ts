@@ -99,6 +99,67 @@ let cookieFetchedAt = 0;
 /** Shared in-flight login so concurrent cold callers log in once. */
 let loginInFlight: Promise<string> | null = null;
 
+/* ------------------------------------------------------------
+   Request accounting (Session 6 — System Telemetry panel).
+   Every HTTP call to Space-Track (login + query) is timestamped so
+   /api/health can report live budget use against the published
+   30/min and 300/hr limits. Per serverless instance, like the caches.
+   ------------------------------------------------------------ */
+
+export const SPACE_TRACK_HOURLY_LIMIT = 300;
+export const SPACE_TRACK_PER_MINUTE_LIMIT = 30;
+const REQUEST_LOG_WINDOW_MS = 60 * 60 * 1000;
+const requestLog: number[] = [];
+let lastLoginAt: number | null = null;
+let sharedCacheHits = 0;
+let sharedCacheMisses = 0;
+
+function recordRequest(): void {
+  const now = Date.now();
+  requestLog.push(now);
+  while (requestLog.length > 0 && requestLog[0] < now - REQUEST_LOG_WINDOW_MS) {
+    requestLog.shift();
+  }
+}
+
+export interface SpaceTrackStats {
+  requestsLastHour: number;
+  requestsLastMinute: number;
+  hourlyLimit: number;
+  perMinuteLimit: number;
+  lastLoginAt: string | null;
+  sessionCookieAgeSeconds: number | null;
+  sharedCacheEntries: number;
+  sharedCacheHits: number;
+  sharedCacheMisses: number;
+}
+
+/** Live Space-Track request budget for this instance (never throws). */
+export function getSpaceTrackStats(): SpaceTrackStats {
+  const now = Date.now();
+  while (requestLog.length > 0 && requestLog[0] < now - REQUEST_LOG_WINDOW_MS) {
+    requestLog.shift();
+  }
+  let lastMinute = 0;
+  for (let i = requestLog.length - 1; i >= 0 && requestLog[i] >= now - 60_000; i--) {
+    lastMinute++;
+  }
+  return {
+    requestsLastHour: requestLog.length,
+    requestsLastMinute: lastMinute,
+    hourlyLimit: SPACE_TRACK_HOURLY_LIMIT,
+    perMinuteLimit: SPACE_TRACK_PER_MINUTE_LIMIT,
+    lastLoginAt: lastLoginAt === null ? null : new Date(lastLoginAt).toISOString(),
+    sessionCookieAgeSeconds:
+      sessionCookie && cookieFetchedAt > 0
+        ? Math.round((now - cookieFetchedAt) / 1000)
+        : null,
+    sharedCacheEntries: sharedCache.size,
+    sharedCacheHits,
+    sharedCacheMisses,
+  };
+}
+
 /** Read + validate credentials from the environment. */
 function getCredentials(): { identity: string; password: string } {
   const identity = process.env.SPACETRACK_USERNAME;
@@ -143,6 +204,7 @@ async function login(): Promise<string> {
   // "chocolatechip=...; Path=/; ..." -> keep only "chocolatechip=..."
   sessionCookie = setCookie.split(";")[0];
   cookieFetchedAt = Date.now();
+  lastLoginAt = cookieFetchedAt;
   return sessionCookie;
 }
 
@@ -170,6 +232,7 @@ async function fetchWithTimeout(
   url: string,
   init: RequestInit
 ): Promise<Response> {
+  recordRequest();
   try {
     return await fetch(url, {
       ...init,
@@ -208,14 +271,17 @@ async function sharedFetch<T>(
 ): Promise<T> {
   const hit = sharedCache.get(key);
   if (hit && hit.expires > Date.now()) {
+    sharedCacheHits++;
     return hit.data as T;
   }
   if (hit) sharedCache.delete(key);
 
   const pending = sharedInFlight.get(key);
   if (pending) {
+    sharedCacheHits++;
     return pending as Promise<T>;
   }
+  sharedCacheMisses++;
 
   const request = loader()
     .then((data) => {

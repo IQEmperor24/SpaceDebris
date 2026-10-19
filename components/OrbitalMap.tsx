@@ -6,6 +6,7 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import * as satellite from "satellite.js";
 import type { SpaceTrackTLE } from "@/lib/spacetrack";
 import { dateToJulian, formatDuration, formatUtc } from "@/lib/orbital";
+import { recordMapFps, recordMapTick } from "@/lib/telemetry";
 
 /* ============================================================
    Panel 1 — Live 3D Orbital Map (Three.js)
@@ -474,6 +475,7 @@ export default function OrbitalMap() {
       // Not loaded yet, or geometry is mid-rebuild — try again next tick.
       if (!attr || attr.count !== filtered.length) return;
       const arr = attr.array as Float32Array;
+      const tickStart = performance.now();
 
       const date = new Date(simTimeMsRef.current);
       const jd = dateToJulian(date);
@@ -519,6 +521,8 @@ export default function OrbitalMap() {
       // which Three computes once and never refreshes for in-place updates.
       // Keep it current so the hover tooltip keeps working as objects move.
       points.geometry.computeBoundingSphere();
+      // Engineering telemetry (System Telemetry panel) — no state churn.
+      recordMapTick(performance.now() - tickStart, filtered.length);
     };
 
     // Animation loop + FPS + simulation clock
@@ -557,7 +561,9 @@ export default function OrbitalMap() {
       frames++;
       const now = performance.now();
       if (now - lastFpsTime >= 500) {
-        setFps(Math.round((frames * 1000) / (now - lastFpsTime)));
+        const fpsNow = Math.round((frames * 1000) / (now - lastFpsTime));
+        setFps(fpsNow);
+        recordMapFps(fpsNow);
         frames = 0;
         lastFpsTime = now;
       }
