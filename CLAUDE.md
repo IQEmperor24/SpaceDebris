@@ -68,7 +68,7 @@ When he responds — prepare NASA demo version immediately.
 ---
 
 ## Tech Stack
-- Next.js 14.2.3 App Router
+- Next.js 14.2.35 App Router (patched from 14.2.3 in Session 6: CVE-2025-29927 middleware bypass only affected self-hosted deploys, Vercel was never exposed)
 - TypeScript (strict mode ON)
 - Tailwind CSS
 - Three.js (3D orbital visualization)
