@@ -82,6 +82,7 @@ export interface SpaceTrackCDM {
   CDM_ID: string;
   CREATED: string;
   TCA: string;
+  /** Minimum range at TCA in METRES (CCSDS CDM convention) — convert with cdmMissDistanceKm(). */
   MIN_RNG: string;
   PC: string;
   SAT_1_ID: string;

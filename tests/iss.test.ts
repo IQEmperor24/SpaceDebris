@@ -98,7 +98,7 @@ function cdm(partial: Partial<SpaceTrackCDM>): SpaceTrackCDM {
     CDM_ID: "1",
     CREATED: "2024-01-01 00:00:00",
     TCA: "2024-01-02T00:00:00.000",
-    MIN_RNG: "1.234",
+    MIN_RNG: "1234", // metres (cdm_public convention)
     PC: "0",
     SAT_1_ID: "25544",
     SAT_1_NAME: "ISS (ZARYA)",
@@ -120,7 +120,7 @@ test("assessIssCdm: thresholds are inclusive at exactly 1e-4 and 1e-5", () => {
   assert.equal(level("null"), "GREEN");
   assert.equal(I.assessIssCdm(cdm({ PC: "null" })).pc, null);
   assert.equal(I.assessIssCdm(cdm({ MIN_RNG: "abc" })).missKm, null);
-  assert.equal(I.assessIssCdm(cdm({ MIN_RNG: "0.750" })).missKm, 0.75);
+  assert.equal(I.assessIssCdm(cdm({ MIN_RNG: "750" })).missKm, 0.75); // metres -> km
 });
 
 test("assessIssCdm / isIssCdm: the other object is whichever side is not 25544", () => {

@@ -8,6 +8,7 @@ import {
   type ConjunctionAlert,
 } from "@/lib/prompts";
 import { fetchConjunctions, type SpaceTrackCDM } from "@/lib/spacetrack";
+import { formatCdmMissKm } from "@/lib/orbital";
 
 /* ============================================================
    GET /api/conjunctions
@@ -114,7 +115,8 @@ export async function GET(): Promise<NextResponse> {
         sat2Name: c.SAT_2_NAME,
         sat2Id: c.SAT_2_ID,
         tca: c.TCA,
-        missDistanceKm: c.MIN_RNG,
+        // MIN_RNG is METRES in cdm_public; the feed contract is km.
+        missDistanceKm: formatCdmMissKm(c.MIN_RNG),
         probability: c.PC,
         plainEnglish:
           ai?.plainEnglish ??

@@ -509,6 +509,32 @@ export function toRic(vec: Vec3, frame: RicFrame): RicVector {
    ------------------------------------------------------------ */
 
 /**
+ * Miss distance of a Space-Track cdm_public row in KILOMETRES.
+ *
+ * MIN_RNG is in METRES (the CCSDS CDM MISS_DISTANCE convention): a
+ * public CDM with PC ≈ 1e-4 carries MIN_RNG ≈ 400, i.e. 400 m — a
+ * 400 km miss could never have that probability. Every consumer that
+ * wants km (alert feed, fleet thresholds, ISS console, prompts) MUST
+ * convert through this helper so the unit lives in exactly one place.
+ * Returns null when the field is missing or not a finite number.
+ */
+export function cdmMissDistanceKm(
+  minRng: string | number | null | undefined
+): number | null {
+  if (minRng === null || minRng === undefined) return null;
+  const metres = typeof minRng === "number" ? minRng : parseFloat(minRng);
+  if (!Number.isFinite(metres) || metres < 0) return null;
+  return metres / 1000;
+}
+
+/** "0.388" style km string for display / prompt use; raw field if unparseable. */
+export function formatCdmMissKm(minRng: string | number | null | undefined): string {
+  const km = cdmMissDistanceKm(minRng);
+  if (km === null) return minRng === null || minRng === undefined ? "n/a" : String(minRng);
+  return km.toFixed(3);
+}
+
+/**
  * Mean altitude (km) from the gp APOAPSIS / PERIAPSIS strings.
  * Same semantics as app/api/fleet + app/api/analyze: NaN if invalid.
  */

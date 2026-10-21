@@ -658,7 +658,7 @@ const ENDPOINT_DEFS: EndpointDef[] = [
       { name: "sat2Name", in: "body", type: "string", required: true, example: "FENGYUN 1C DEB", description: "Secondary object name." },
       { name: "sat2Id", in: "body", type: "string", required: true, example: "31141", description: "Secondary NORAD ID." },
       { name: "tca", in: "body", type: "string", required: true, example: "2024-01-01T18:42:10.000000", description: "Time of closest approach as published." },
-      { name: "missDistanceKm", in: "body", type: "string", required: true, example: "0.412", description: "Miss distance (km) — a STRING, as in the CDM." },
+      { name: "missDistanceKm", in: "body", type: "string", required: true, example: "0.412", description: "Miss distance in km as a STRING (converted from the CDM's MIN_RNG, which Space-Track publishes in metres)." },
       { name: "probability", in: "body", type: "string", required: true, example: "0.0000312", description: "Pc — a STRING, as in the CDM." },
     ],
     body: EX_CDM_ALERT,

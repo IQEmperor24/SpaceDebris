@@ -480,6 +480,13 @@ ANTHROPIC_API_KEY was updated in BOTH .env.local AND Vercel Session 4.
 24. Screening keeps the closest approach per secondary (co-orbital objects
     would otherwise produce one row per revolution)
 
+### Session 6 (SpaceX-recruiter upgrade)
+25. PRE-EXISTING BUG FIXED: cdm_public MIN_RNG is METRES, not km. The alert
+    feed, fleet severity thresholds, ISS console and the conjunction
+    prompt now convert through cdmMissDistanceKm(); "388 km" was 388 m.
+    Fleet HIGH/CRITICAL counts become realistic (miss-based tiers finally
+    trigger).
+
 ---
 
 ## Space-Track.org API — Critical Facts
@@ -489,6 +496,9 @@ ANTHROPIC_API_KEY was updated in BOTH .env.local AND Vercel Session 4.
 - Rate limit: 30 req/min, 300/hr
 - TLE endpoint: class/gp/ (NOT tle_latest — returns 404)
 - CDM endpoint: class/cdm_public/ (working)
+- MIN_RNG is in METRES (CCSDS CDM convention) — convert with
+  cdmMissDistanceKm() in lib/orbital.ts. Sessions 1-5 displayed it as km
+  ("miss 388 km" next to PC 1e-4 — impossible); fixed in Session 6.
 - Returns 404 (not 401) when unauthenticated
 
 ---

@@ -17,6 +17,7 @@ import {
   type SpaceTrackTLE,
   type SpaceTrackCDM,
 } from "@/lib/spacetrack";
+import { cdmMissDistanceKm, formatCdmMissKm } from "@/lib/orbital";
 
 /* ============================================================
    GET /api/fleet
@@ -81,7 +82,8 @@ function setCached(data: FleetIntelligence): void {
 
 /** Composite severity score — higher = worse. Used to rank top CDMs. */
 function cdmSeverityScore(c: SpaceTrackCDM): number {
-  const miss = parseFloat(c.MIN_RNG);
+  const missRaw = cdmMissDistanceKm(c.MIN_RNG); // km (MIN_RNG is metres)
+  const miss = missRaw === null ? NaN : missRaw;
   const pc = parseFloat(c.PC);
   const missTerm =
     Number.isFinite(miss) && miss > 0 ? 10 / miss : 0; // closer = bigger score
@@ -97,7 +99,8 @@ function cdmSeverityScore(c: SpaceTrackCDM): number {
  * - LOW:      everything else
  */
 function classifyCDM(c: SpaceTrackCDM): ThreatLevel {
-  const miss = parseFloat(c.MIN_RNG);
+  const missRaw = cdmMissDistanceKm(c.MIN_RNG); // km (MIN_RNG is metres)
+  const miss = missRaw === null ? NaN : missRaw;
   const pc = parseFloat(c.PC);
   const missValid = Number.isFinite(miss);
   const pcValid = Number.isFinite(pc);
@@ -244,7 +247,7 @@ export async function GET(): Promise<NextResponse> {
       topCDMs: topCDMs.map((c) => ({
         pair: `${c.SAT_1_NAME} ↔ ${c.SAT_2_NAME}`,
         tca: c.TCA,
-        missKm: c.MIN_RNG,
+        missKm: formatCdmMissKm(c.MIN_RNG),
         pc: c.PC,
       })),
     };
