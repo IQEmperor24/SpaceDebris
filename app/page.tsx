@@ -217,12 +217,15 @@ export default function DashboardPage() {
       </nav>
 
       {/* ---------- Panel grid ----------
+          Height budget: 100vh minus header (60 px) + jump nav (~38 px) +
+          paddings/margins (~54 px) ≈ 9.5rem, so the hero grid still ends
+          above the fold at 1440×900 (was 7rem before the Session 6 nav).
           Large screens: 3 columns × 2 rows.
             - Panel 1 (OrbitalMap): spans 2 cols × 2 rows (the hero).
             - Panel 2 (RiskScorer): top-right.
             - Panel 3 (AlertFeed): bottom-right.
           Small screens: single column, stacked. */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3 lg:grid-rows-2 lg:gap-6 lg:h-[calc(100vh-7rem)]">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3 lg:grid-rows-2 lg:gap-6 lg:h-[calc(100vh-9.5rem)]">
         {/* Panel 1 — Live 3D Orbital Map */}
         <section className="glass-card relative overflow-hidden lg:col-span-2 lg:row-span-2 min-h-[360px]">
           <PanelHeading>3D ORBITAL MAP</PanelHeading>

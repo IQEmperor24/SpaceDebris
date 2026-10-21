@@ -754,7 +754,9 @@ function ApiRow({ r }: { r: RouteTelemetry }) {
       data-testid="telemetry-api-row"
       data-route={r.route}
     >
-      <td className="whitespace-nowrap py-1.5 pr-3 text-text-primary" title={r.route}>
+      {/* w-full + max-w-0 lets the route column absorb the remaining width
+          and ellipsize, so the table never scrolls inside a narrow column. */}
+      <td className="w-full max-w-0 truncate py-1.5 pr-3 text-text-primary" title={r.route}>
         {label}
       </td>
       <td className="whitespace-nowrap py-1.5 pr-3 text-right tabular-nums text-text-secondary">

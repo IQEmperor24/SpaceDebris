@@ -371,8 +371,24 @@ Built in a Claude Code cloud session on branch feature/spacex-upgrade
   disposal after the screener; telemetry last.
 - vercel.json: app/api/cola/route.ts maxDuration 30.
 
-### Session 6 verification
-(filled in at the end of the session — see below)
+### Session 6 verification (cloud session)
+- npm run build: CLEAN — 16 routes (+ /api/cola, /api/openapi), /docs
+  static page, Edge middleware 28.6 kB, / first-load JS 96.8 kB.
+- npm run typecheck: 0 errors. npm test: 134/134 (orbital 14, spacetrack
+  8, screening 7, iss 9, spaceweather 11, density 10, fragmentation 9,
+  starlink 11, lifetime 17, maneuver 13, launch 11, rateLimit 14) in ~5 s,
+  no network.
+- Playwright (headless Chromium, every /api/* mocked): 26/26 — the 15
+  Session 5 steps unchanged + 11 Session 6 steps (Starlink rows/ladder,
+  avoidance trade space + recommendation + sensitivity, COLA timeline +
+  blackout rows, lifetime FCC badge + curve + ladder, telemetry budget /
+  map / benchmark, /docs cards + /api/openapi + rate-limit headers);
+  0 console errors; no horizontal overflow at 1440 / 1280 / 1024 / 390
+  (dashboard and /docs); header 60 px; hero grid budget raised to
+  calc(100vh − 9.5rem) to make room for the jump nav.
+- Space-Track / Anthropic / NOAA still NOT reachable from the sandbox;
+  first production check after deploy: open every panel once, run the
+  screener on ISS (planner reads its cached result), run one COLA screen.
 
 ---
 
@@ -402,7 +418,15 @@ C:\Users\user\SpaceDebris\
     - assess/route.ts           DONE — S5 F2 Claude CA memo (POST)
     - iss/route.ts              DONE — S5 F3 ISS TLE + ISS CDMs
     - spaceweather/route.ts     DONE — S5 F6 NOAA SWPC Kp + F10.7
-    - health/route.ts           DONE — S5 F7 subsystem health
+    - health/route.ts           DONE — S5 F7 subsystem health (+ S6 budget)
+    - cola/route.ts             DONE — S6 F3 launch COLA screening (GET)
+    - openapi/route.ts          DONE — S6 F5 OpenAPI 3.1 document (GET)
+  - docs/page.tsx               DONE — S6 F5 API reference (server component)
+- middleware.ts                 DONE — S6 F5 per-IP rate limit + CORS on /api/*
+- tests/                        DONE — S6 F6 node:test suites (npm test)
+- .github/workflows/ci.yml      DONE — S6 F6 CI: typecheck → test → build
+- README.md                     DONE — S6 F6 recruiter-facing README
+- .nvmrc                        DONE — Node 22
 - lib/
   - anthropic.ts                DONE — Model: claude-sonnet-4-6
   - spacetrack.ts               DONE — gp class, auth working
@@ -414,6 +438,14 @@ C:\Users\user\SpaceDebris\
   - fragmentation.ts            DONE — S5 F4 breakup catalog + grouping
   - density.ts                  DONE — S5 F5 histogram binning
   - spaceweather.ts             DONE — S5 F6 SWPC parsers + drag regime
+  - health.ts                   DONE — S5/S6 health contract types (PURE)
+  - telemetry.ts                DONE — S6 client telemetry bus + timedFetch
+  - starlink.ts                 DONE — S6 F1 shell table + classification
+  - maneuver.ts                 DONE — S6 F2 CW trade space + two-body re-solve
+  - launch.ts                   DONE — S6 F3 launch sites, insertion, COLA screen
+  - lifetime.ts                 DONE — S6 F4 atmosphere + decay integrator
+  - apiSpec.ts                  DONE — S6 F5 endpoint list → OpenAPI + /docs
+  - rateLimit.ts                DONE — S6 F5 pure token bucket (Edge-safe)
 - components/
   - OrbitalMap.tsx              DONE — Three.js 3D, uSize 2.0 + S5 live propagation
   - RiskScorer.tsx              DONE — Risk scoring + maneuver plan
@@ -425,6 +457,11 @@ C:\Users\user\SpaceDebris\
   - DensityProfile.tsx          DONE — S5 F5 altitude / inclination charts
   - FragmentationTracker.tsx    DONE — S5 F4 family table
   - SpaceWeather.tsx            DONE — S5 F6 Kp / F10.7 / reentry watch
+  - StarlinkMonitor.tsx         DONE — S6 F1 constellation monitor
+  - AvoidancePlanner.tsx        DONE — S6 F2 Δv trade space + recommendation
+  - LaunchCola.tsx              DONE — S6 F3 launch window timeline
+  - DisposalCompliance.tsx      DONE — S6 F4 lifetime + FCC 5-year check
+  - SystemTelemetry.tsx         DONE — S6 F7 budget / propagation / latency
 
 ---
 
@@ -553,6 +590,7 @@ ANTHROPIC_API_KEY was updated in BOTH .env.local AND Vercel Session 4.
 - Session 5 features 1, 3, 4, 5, 6, 7: $0 (deterministic physics, no Claude)
 - Session 5 screening (GET /api/screen): $0 (pure SGP4)
 - Session 5 AI conjunction assessment memo (POST /api/assess): ~$0.01
+- Session 6 features 1-7: $0 — fully deterministic, no Claude calls
 
 ---
 
@@ -743,6 +781,9 @@ Session 4:    Phases 1-3 complete ($4.04)
 Session 5:    NASA / JSC upgrade — 7 features, real SGP4 physics
               (Claude Code cloud session; $0 Anthropic API spend —
               nothing was called at runtime in the sandbox)
+Session 6:    SpaceX-recruiter upgrade — 7 deterministic features,
+              public API + docs, in-repo tests + CI + README, and the
+              metres→km CDM fix (cloud session; $0 API spend)
 Total:        ~$24 invested in API credits
 
 The problem is existential.
