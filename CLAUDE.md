@@ -329,7 +329,9 @@ Built in a Claude Code cloud session on branch feature/spacex-upgrade
   cap. Ballistic presets (Starlink-class B 0.04 m²/kg, 3U CubeSat, 1,000 kg
   bus, dense fragment). Checks: FCC 5-year post-mission disposal (2022)
   and the legacy 25-year guideline. Decay curve + lifetime ladder.
-- Sanity anchor: Starlink-class at 550 km, mean activity ≈ 5 years.
+- Model numbers for Starlink-class B 0.04 m²/kg at 550 km: ≈ 5.8 y LOW /
+  2.9 y MEAN / 1.2 y HIGH activity — SpaceX's public "~5 years" rationale
+  sits between LOW and MEAN. The panel prints these next to the result.
 
 ### S6 Feature 5 — Public API: OpenAPI + /docs + rate limit + CORS ✅
 - lib/apiSpec.ts (single source for the OpenAPI 3.1 doc AND the docs
