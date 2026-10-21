@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { SpaceTrackTLE } from "@/lib/spacetrack";
 import { timedFetch } from "@/lib/telemetry";
 import {
@@ -325,8 +325,10 @@ function DecayCurve({ result, nowMs }: { result: LifetimeResult; nowMs: number }
   const svgRef = useRef<SVGSVGElement>(null);
   const [boxW, setBoxW] = useState(CHART_DEFAULT_W);
 
-  // Track the rendered width so the viewBox maps 1:1 to CSS pixels.
-  useEffect(() => {
+  // Track the rendered width so the viewBox maps 1:1 to CSS pixels. Layout
+  // effect (client-only component): the first paint already has the real
+  // width instead of a 600 px guess that would reflow the panel below it.
+  useLayoutEffect(() => {
     const el = wrapRef.current;
     if (!el) return;
     const measure = (): void => {
@@ -908,18 +910,28 @@ export default function DisposalCompliance() {
       : null;
 
   /* ---- Model ---- */
+  // The ladder depends on B and activity only, so an ESTIMATE or a
+  // ladder-row click (start.altKm) does not re-integrate seven altitudes.
+  const ladder = useMemo(() => {
+    if (bc === null) return null;
+    try {
+      return lifetimeLadder(bc, activity);
+    } catch {
+      return null;
+    }
+  }, [bc, activity]);
+
   const computed = useMemo(() => {
-    if (bc === null || nowMs === null || !Number.isFinite(start.altKm)) return null;
+    if (bc === null || nowMs === null || ladder === null || !Number.isFinite(start.altKm)) return null;
     try {
       const t0 = performance.now();
       const result = estimateLifetime(start.altKm, bc, activity, new Date(nowMs));
-      const ladder = lifetimeLadder(bc, activity);
       const ms = performance.now() - t0;
       return { result, ladder, ms };
     } catch {
       return null;
     }
-  }, [bc, activity, nowMs, start.altKm]);
+  }, [bc, activity, nowMs, start.altKm, ladder]);
 
   /** Live sanity anchor: the Starlink-class preset at 550 km, all three activity levels. */
   const anchor = useMemo(() => {
@@ -1166,6 +1178,19 @@ export default function DisposalCompliance() {
             <div className="mt-1" style={{ color: CAUTION }}>
               Eccentric orbit (apo − peri ≈ {Math.round(eccentricSpread).toLocaleString()} km): the
               circular model uses the mean altitude — perigee drag makes the real lifetime shorter.
+            </div>
+          )}
+          {start.kind === "object" && activePreset && !/STARLINK/i.test(start.name) && (
+            <div className="mt-1" style={{ color: CAUTION }} data-testid="lifetime-preset-caution">
+              B is the {activePreset.label} preset, not {start.name}&apos;s —{" "}
+              {impliedB !== null && impliedUsable ? (
+                <>
+                  its observed decay implies B ≈ {fmtB(impliedB)} m²/kg: press USE under IMPLIED B
+                  below, or type the vehicle&apos;s own B.
+                </>
+              ) : (
+                <>type the vehicle&apos;s own B = Cd·A/m, or pick the closest preset.</>
+              )}
             </div>
           )}
           {start.altKm > 2000 && (

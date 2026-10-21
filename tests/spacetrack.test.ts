@@ -114,13 +114,25 @@ test("timeout: mapped to a clear error and never cached", async () => {
   assert.equal(retry.length, 500, "the next caller retries and succeeds");
 });
 
-test("searchTLE: numeric queries use the NORAD_CAT_ID predicate; blank returns null", async () => {
+test("searchTLE: numeric queries use NORAD_CAT_ID, names use OBJECT_NAME, blank returns null", async () => {
   const hit = await ST.searchTLE("25544");
   assert.ok(hit);
   assert.ok(calls.some((k) => k.url.includes("NORAD_CAT_ID/25544")));
-  await ST.searchTLE("ISS");
-  assert.ok(calls.some((k) => k.url.includes("OBJECT_NAME/~~ISS")));
+  await ST.searchTLE("HUBBLE");
+  assert.ok(calls.some((k) => k.url.includes("OBJECT_NAME/~~HUBBLE")));
   assert.equal(await ST.searchTLE("   "), null);
+});
+
+test("searchTLE: bare \"ISS\" is aliased to NORAD 25544 and shares its 5-min lookup cache", async () => {
+  // OBJECT_NAME/~~ISS would return whichever "ISS…" object (NAUKA, an ISS DEB
+  // fragment, SWISSCUBE) has the newest epoch — the routes that resolve a user
+  // query must all mean the same object, and must not re-query Space-Track.
+  const direct = await ST.searchTLE("25544");
+  const before = calls.length;
+  const aliased = await ST.searchTLE(" iss ");
+  assert.deepEqual(aliased, direct);
+  assert.equal(calls.length, before, "served from the shared search cache — no HTTP call");
+  assert.ok(!calls.some((k) => k.url.toLowerCase().includes("object_name/~~iss")));
 });
 
 test("request accounting: every HTTP call is counted against the published budget", () => {
@@ -145,4 +157,24 @@ test("missing credentials fail loudly instead of sending an empty login", async 
   delete process.env.SPACETRACK_PASSWORD;
   await assert.rejects(ST.fetchTLEs(42), /SPACETRACK_USERNAME \/ SPACETRACK_PASSWORD are not set/);
   process.env.SPACETRACK_PASSWORD = "test-password";
+});
+
+test("soft budget: the request that would exceed 25/min is refused locally, before any HTTP call", async () => {
+  // Runs last: it fills the per-instance request log up to the soft limit.
+  while (ST.getSpaceTrackStats().requestsLastMinute < ST.SPACE_TRACK_SOFT_PER_MINUTE_LIMIT) {
+    await ST.probeGp(); // uncached by design — one HTTP call each
+  }
+  assert.equal(ST.getSpaceTrackStats().requestsLastMinute, ST.SPACE_TRACK_SOFT_PER_MINUTE_LIMIT);
+  const before = calls.length;
+  await assert.rejects(ST.probeGp(), (err: unknown) => {
+    assert.ok(err instanceof ST.SpaceTrackBudgetError);
+    assert.equal(err.name, "SpaceTrackBudgetError");
+    assert.match(err.message, /budget exhausted on this instance/);
+    assert.ok(err.retryAfterSeconds >= 1 && err.retryAfterSeconds <= 60);
+    return true;
+  });
+  assert.equal(calls.length, before, "refused without touching Space-Track");
+  const stats = ST.getSpaceTrackStats();
+  assert.equal(stats.budgetRefusals, 1);
+  assert.ok(stats.softPerMinuteLimit < ST.SPACE_TRACK_PER_MINUTE_LIMIT && stats.softHourlyLimit < ST.SPACE_TRACK_HOURLY_LIMIT);
 });

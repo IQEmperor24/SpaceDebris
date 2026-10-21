@@ -35,7 +35,7 @@ import Link from "next/link";
 
    Session 6 — SpaceX-recruiter upgrade. Seven more features:
      1. Starlink Constellation Monitor      (StarlinkMonitor)
-     2. Autonomous Avoidance Planner        (AvoidancePlanner)
+     2. Avoidance Burn Planner              (AvoidancePlanner)
      3. Launch COLA Screening               (LaunchCola)
      4. Orbital Lifetime & Disposal         (DisposalCompliance)
      5. Public API: OpenAPI + /docs + limits (app/docs, middleware)
@@ -203,29 +203,34 @@ export default function DashboardPage() {
       <nav
         aria-label="Panels"
         data-testid="panel-nav"
-        className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[0.6rem] uppercase tracking-widest text-text-muted md:mb-6"
+        className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-0 font-mono text-[0.6rem] uppercase tracking-widest text-text-secondary md:mb-6"
       >
         {PANEL_NAV.map((p) => (
-          <a key={p.id} href={`#${p.id}`} className="transition-colors hover:text-safe">
+          <a
+            key={p.id}
+            href={`#${p.id}`}
+            className="inline-block py-1.5 transition-colors hover:text-safe focus-visible:text-safe"
+          >
             {p.label}
           </a>
         ))}
         <span className="text-text-muted">|</span>
-        <Link href="/docs" className="text-safe hover:underline" data-testid="nav-api-docs">
+        <Link href="/docs" className="inline-block py-1.5 text-safe hover:underline" data-testid="nav-api-docs">
           API docs →
         </Link>
       </nav>
 
       {/* ---------- Panel grid ----------
-          Height budget: 100vh minus header (60 px) + jump nav (~38 px) +
-          paddings/margins (~54 px) ≈ 9.5rem, so the hero grid still ends
-          above the fold at 1440×900 (was 7rem before the Session 6 nav).
+          Height budget: 100vh minus header (60 px) + jump nav (~50 px incl.
+          its 12 px tap-target padding) + paddings/margins (~54 px) ≈ 10.25rem,
+          so the hero grid still ends above the fold at 1440×900 (was 7rem
+          before the Session 6 nav).
           Large screens: 3 columns × 2 rows.
             - Panel 1 (OrbitalMap): spans 2 cols × 2 rows (the hero).
             - Panel 2 (RiskScorer): top-right.
             - Panel 3 (AlertFeed): bottom-right.
           Small screens: single column, stacked. */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3 lg:grid-rows-2 lg:gap-6 lg:h-[calc(100vh-9.5rem)]">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3 lg:grid-rows-2 lg:gap-6 lg:h-[calc(100vh-10.25rem)]">
         {/* Panel 1 — Live 3D Orbital Map */}
         <section className="glass-card relative overflow-hidden lg:col-span-2 lg:row-span-2 min-h-[360px]">
           <PanelHeading>3D ORBITAL MAP</PanelHeading>
@@ -272,7 +277,7 @@ export default function DashboardPage() {
 
       {/* ---------- Session 6 — SpaceX upgrade ---------- */}
 
-      {/* S6 Feature 2 — Autonomous Avoidance Planner (reuses /api/screen) */}
+      {/* S6 Feature 2 — Avoidance Burn Planner (reuses /api/screen) */}
       <div id="avoidance" className="mt-4 scroll-mt-4 md:mt-6">
         <AvoidancePlanner />
       </div>

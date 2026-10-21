@@ -3,7 +3,15 @@
    LRU-bounded memory). Time is injected, so every case is deterministic. */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { API_RATE_LIMIT, createRateLimiter } from "@/lib/rateLimit";
+import {
+  API_EXPENSIVE_RATE_LIMIT,
+  API_RATE_LIMIT,
+  MAX_CLIENT_KEY_LENGTH,
+  clientKeyFromIp,
+  createRateLimiter,
+  rateLimitTier,
+  requestsPerMinute,
+} from "@/lib/rateLimit";
 
 const T0 = 1_700_000_000_000;
 
@@ -170,4 +178,50 @@ test("module is Edge-safe: no Node-only identifiers in the source", async () => 
   for (const banned of ["require(", "from \"node:", "process.", "Buffer", "setTimeout", "setInterval", "import "]) {
     assert.ok(!src.includes(banned), `rateLimit.ts must not contain ${banned}`);
   }
+});
+
+test("expensive tier policy is 20 burst, 10/min sustained", () => {
+  assert.equal(API_EXPENSIVE_RATE_LIMIT.capacity, 20);
+  assert.equal(requestsPerMinute(API_EXPENSIVE_RATE_LIMIT), 10);
+  assert.ok(API_EXPENSIVE_RATE_LIMIT.capacity < API_RATE_LIMIT.capacity);
+});
+
+test("rateLimitTier: every POST, /api/screen, /api/cola and uncached debris lookups are expensive", () => {
+  const q = (o: Record<string, string> = {}) => new URLSearchParams(o);
+  assert.equal(rateLimitTier("POST", "/api/analyze", q()), "expensive");
+  assert.equal(rateLimitTier("post", "/api/cascade", q()), "expensive", "method case-insensitive");
+  assert.equal(rateLimitTier("PUT", "/api/anything", q()), "expensive", "non-GET methods are never general");
+  assert.equal(rateLimitTier("OPTIONS", "/api/analyze", q()), "general", "preflight reaches no route");
+  assert.equal(rateLimitTier("GET", "/api/screen", q({ target: "ISS", hours: "24" })), "expensive");
+  assert.equal(rateLimitTier("GET", "/API/Cola/", q()), "expensive", "path case + trailing slash normalised");
+  assert.equal(rateLimitTier("GET", "/api/%73creen", q()), "expensive", "percent-encoded path decoded");
+  assert.equal(rateLimitTier("HEAD", "/api/cola", q()), "expensive");
+  // /api/debris: the two cached sample sizes are general, anything else hits Space-Track.
+  assert.equal(rateLimitTier("GET", "/api/debris", q()), "general", "default limit 500 is cached");
+  assert.equal(rateLimitTier("GET", "/api/debris", q({ limit: "2000" })), "general");
+  assert.equal(rateLimitTier("GET", "/api/debris", q({ limit: "300" })), "expensive");
+  assert.equal(rateLimitTier("GET", "/api/debris", q({ limit: "abc" })), "general", "unparseable → route default");
+  assert.equal(rateLimitTier("GET", "/api/debris", q({ search: "   " })), "general", "blank search is a list");
+  assert.equal(rateLimitTier("GET", "/api/debris", q({ search: "ISS" })), "expensive");
+  // Cached, Claude-backed GETs stay general (single-key route caches bound their cost).
+  assert.equal(rateLimitTier("GET", "/api/conjunctions", q()), "general");
+  assert.equal(rateLimitTier("GET", "/api/fleet", q()), "general");
+  assert.equal(rateLimitTier("GET", "/api/health", q()), "general");
+});
+
+test("clientKeyFromIp: IPv4 as is, IPv6 cut to /64, mapped IPv4 unwrapped, junk bounded", () => {
+  assert.equal(clientKeyFromIp("1.2.3.4"), "1.2.3.4");
+  assert.equal(clientKeyFromIp("1.2.3.4:5678"), "1.2.3.4", "trailing port dropped");
+  assert.equal(clientKeyFromIp("2001:DB8:0:1:2:3:4:5"), "2001:db8:0:1::/64");
+  assert.equal(clientKeyFromIp("2001:db8::1"), "2001:db8:0:0::/64", "compressed spelling");
+  assert.equal(clientKeyFromIp("[2001:db8:0:1::7]:443"), "2001:db8:0:1::/64", "bracketed with port");
+  assert.equal(clientKeyFromIp("fe80::1%eth0"), "fe80:0:0:0::/64", "zone id ignored");
+  assert.equal(clientKeyFromIp("::ffff:192.0.2.1"), "192.0.2.1", "IPv4-mapped IPv6");
+  assert.equal(
+    clientKeyFromIp("2001:db8:0:1:aaaa:bbbb:cccc:dddd"),
+    clientKeyFromIp("2001:db8:0:1:1111:2222:3333:4444"),
+    "two hosts in one /64 share a bucket"
+  );
+  const junk = clientKeyFromIp("x".repeat(200));
+  assert.ok(junk.length <= MAX_CLIENT_KEY_LENGTH, `junk key bounded (${junk.length})`);
 });

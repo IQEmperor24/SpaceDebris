@@ -1,8 +1,8 @@
-/* lib/maneuver.ts — Autonomous Avoidance Planner.
+/* lib/maneuver.ts — Avoidance Burn Planner.
    Clohessy-Wiltshire (Hill) linearised relative motion for an in-track
    burn before TCA (impulsive, and finite constant-thrust by superposition),
    VERIFIED against Keplerian two-body truth; the lead x dv trade space with
-   the Starlink-style Pc 1e-5 decision rule; time remaining to TCA;
+   the Starlink-style Pc decision rule (STARLINK_PC_MANEUVER_THRESHOLD); time remaining to TCA;
    Tsiolkovsky propellant and burn time; Pc sensitivity / dilution. */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -97,7 +97,7 @@ test("CW physics: a prograde burn is ABOVE and BEHIND half an orbit later, x = 4
   assert.ok(Math.abs(d.radialKm - (4 * 0.0001) / n) < 1e-9);
 });
 
-test("head-on: the trade space is complete and the minimum-dv burn clears Pc 1e-5", () => {
+test("head-on: the trade space is complete and the minimum-dv burn clears the Starlink trigger", () => {
   const ts = plan(HEAD_ON);
   assert.ok(Math.abs(ts.baseline.missKm - 0.3) < 1e-6);
   assert.ok(ts.baseline.pc >= 1e-4, `baseline Pc ${ts.baseline.pc}`);
@@ -111,10 +111,10 @@ test("head-on: the trade space is complete and the minimum-dv burn clears Pc 1e-
     assert.ok(Number.isFinite(c.propellantKg) && Number.isFinite(c.burnSeconds));
   }
   const rec = ts.recommended;
-  assert.ok(rec && rec.feasible && rec.pc < 1e-5 && rec.missKm > ts.baseline.missKm);
+  assert.ok(rec && rec.feasible && rec.pc < STARLINK_PC_MANEUVER_THRESHOLD && rec.missKm > ts.baseline.missKm);
   // Head-on, only RADIAL displacement moves the encounter-plane miss, and an
-  // in-track burn's radial lever is at most 4 dv / n: clearing 1e-5 under
-  // sigma_R = 0.3 km needs ~0.27 m/s even at the best phase.
+  // in-track burn's radial lever is at most 4 dv / n: even clearing 1e-5 under
+  // sigma_R = 0.3 km needs ~0.27 m/s at the best phase (3e-7 needs more).
   const best = ts.cells.filter((c) => c.dvMps <= 0.2).reduce((m, c) => (c.pc < m.pc ? c : m));
   assert.ok(best.pc > 1e-5, "<= 0.2 m/s cannot clear a head-on 0.3 km radial miss");
   assert.equal(rec.dvMps, 0.5);
@@ -131,7 +131,7 @@ test("head-on: the recommended burn (finite, centred on its lead) is confirmed b
   const truth = evaluateBurnTwoBody({ targetState: TARGET, secondaryState: HEAD_ON, sigmaRicKm: SIGMA, hardBodyRadiusM: HBR_M }, rec.leadSeconds, rec.dvMps, rec.direction, rec.burnSeconds);
   assert.ok(truth);
   assert.ok(Math.abs(truth.missKm - rec.missKm) / rec.missKm < 0.02, "CW miss within 2 % of two-body");
-  assert.ok(truth.pc < 1e-5);
+  assert.ok(truth.pc < STARLINK_PC_MANEUVER_THRESHOLD);
   const err = verifyCwAgainstTwoBody(TARGET, undefined, rec.dvMps);
   assert.ok(err !== null && err < 0.02);
 });
@@ -149,9 +149,9 @@ test("crossing geometry: long-lead in-track drift clears with <= 0.2 m/s", () =>
   const ts = plan(crossing);
   assert.ok(ts.baseline.pc > 1e-5);
   const rec = ts.recommended;
-  assert.ok(rec && rec.dvMps <= 0.2 && rec.pc < 1e-5);
+  assert.ok(rec && rec.dvMps <= 0.2 && rec.pc < STARLINK_PC_MANEUVER_THRESHOLD);
   const truth = evaluateBurnTwoBody({ targetState: TARGET, secondaryState: crossing, sigmaRicKm: SIGMA, hardBodyRadiusM: HBR_M }, rec.leadSeconds, rec.dvMps, rec.direction, rec.burnSeconds);
-  assert.ok(truth && Math.abs(truth.missKm - rec.missKm) / rec.missKm < 0.02 && truth.pc < 1e-5);
+  assert.ok(truth && Math.abs(truth.missKm - rec.missKm) / rec.missKm < 0.02 && truth.pc < STARLINK_PC_MANEUVER_THRESHOLD);
 });
 
 test("finite burn: CW superposition matches two-body sub-impulses; a negligible burn is impulsive", () => {

@@ -57,7 +57,8 @@ test("activityFromF107 buckets", () => {
   assert.equal(L.activityFromF107(99.9), "LOW");
   assert.equal(L.activityFromF107(100), "MEAN");
   assert.equal(L.activityFromF107(158), "MEAN");
-  assert.equal(L.activityFromF107(160), "HIGH");
+  assert.equal(L.activityFromF107(199.9), "MEAN", "ELEVATED drag in the Space Weather panel is still MEAN here");
+  assert.equal(L.activityFromF107(200), "HIGH", "≥ 200 sfu = the Space Weather panel's HIGH band");
   assert.equal(L.activityFromF107(250), "HIGH");
 });
 

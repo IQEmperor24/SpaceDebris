@@ -41,7 +41,8 @@ import type {
    client component can `import type` it without pulling any
    server code into the browser bundle).
 
-   Cache: 5 min, single key, per serverless instance — keeps the
+   Cache: 5 min, single key, per serverless instance, plus ONE
+   in-flight probe shared by concurrent cold callers — keeps the
    probe at <= 1 Space-Track query per minute per instance
    (rate limit is 30/min, 300/hr) and matches the client's 5-min
    poll. OFFLINE results are cached too so a Space-Track outage
@@ -205,6 +206,11 @@ async function probeSpaceTrack(): Promise<SpaceTrackHealth> {
     return result;
   } catch (err) {
     const detail = errorMessage(err);
+    if (err instanceof Error && err.name === "SpaceTrackBudgetError") {
+      // The lib refused to spend a request (per-instance soft budget), so
+      // Space-Track itself was not measured: report DEGRADED, not OFFLINE.
+      return { status: "DEGRADED", latencyMs: null, newestEpoch: null, detail: `Probe skipped — ${detail}` };
+    }
     console.error("[/api/health] Space-Track probe failed:", detail);
     return { status: "OFFLINE", latencyMs: null, newestEpoch: null, detail };
   }
@@ -214,6 +220,33 @@ async function probeSpaceTrack(): Promise<SpaceTrackHealth> {
    Handler
    ------------------------------------------------------------ */
 
+/**
+ * One in-flight probe per instance. The header's MissionStatusBar and the
+ * System Telemetry panel poll this route at the same moments, and two
+ * viewers can cold-start together: they share ONE Space-Track probe
+ * instead of each spending a request from the 30/min budget.
+ */
+let inFlight: Promise<HealthStatus> | null = null;
+
+async function buildHealth(): Promise<HealthStatus> {
+  const spaceTrack = await probeSpaceTrack();
+
+  const result: HealthStatus = {
+    checkedAt: new Date().toISOString(),
+    region: regionName(),
+    uptimeSeconds: uptimeSeconds(),
+    spaceTrack,
+    anthropic: {
+      status: hasEnv("ANTHROPIC_API_KEY") ? "READY" : "NOT CONFIGURED",
+    },
+    spaceTrackCredentials:
+      hasEnv("SPACETRACK_USERNAME") && hasEnv("SPACETRACK_PASSWORD"),
+  };
+
+  setCached(result);
+  return result;
+}
+
 export async function GET(): Promise<NextResponse> {
   const cached = getCached();
   if (cached) {
@@ -222,21 +255,12 @@ export async function GET(): Promise<NextResponse> {
   }
 
   try {
-    const spaceTrack = await probeSpaceTrack();
-
-    const result: HealthStatus = {
-      checkedAt: new Date().toISOString(),
-      region: regionName(),
-      uptimeSeconds: uptimeSeconds(),
-      spaceTrack,
-      anthropic: {
-        status: hasEnv("ANTHROPIC_API_KEY") ? "READY" : "NOT CONFIGURED",
-      },
-      spaceTrackCredentials:
-        hasEnv("SPACETRACK_USERNAME") && hasEnv("SPACETRACK_PASSWORD"),
-    };
-
-    setCached(result);
+    if (!inFlight) {
+      inFlight = buildHealth().finally(() => {
+        inFlight = null;
+      });
+    }
+    const result = await inFlight;
     return NextResponse.json({ ...result, spaceTrackBudget: getSpaceTrackStats() });
   } catch (err) {
     // probeSpaceTrack() never throws, so this only guards the

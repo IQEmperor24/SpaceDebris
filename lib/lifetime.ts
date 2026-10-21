@@ -4,6 +4,7 @@ import {
   REENTRY_ALTITUDE_KM,
   SECONDS_PER_DAY,
 } from "@/lib/orbital";
+import { F107_ELEVATED_MAX, F107_LOW_MAX } from "@/lib/spaceweather";
 
 /* ============================================================
    SpaceDebris — orbital lifetime & disposal compliance (Session 6)
@@ -88,10 +89,11 @@ export const DEFAULT_LADDER_ALTITUDES_KM: ReadonlyArray<number> = [
 ];
 
 /**
- * Altitude band (km) spanned by the public FCC Starlink shells
- * (Gen1 540-570 km, Gen2 525-535 km). Used only to highlight rows.
+ * Altitude band (km) spanned by the public Starlink shells (Gen1
+ * 540-570 km, Gen2 525-535 km) plus the ~480 km operating altitude the
+ * 550 km shell is being lowered to through 2026. Used only to highlight rows.
  */
-export const STARLINK_SHELL_BAND_KM = { min: 525, max: 570 } as const;
+export const STARLINK_SHELL_BAND_KM = { min: 480, max: 570 } as const;
 
 /* ------------------------------------------------------------
    Atmosphere — Vallado Table 8-4 (mean solar activity)
@@ -169,12 +171,18 @@ export const ACTIVITY_FACTOR: Record<SolarActivity, number> = {
   HIGH: 2.5,
 };
 
-/** F10.7 (sfu) → activity bucket: < 100 LOW, < 160 MEAN, else HIGH. null / NaN → MEAN. */
+/**
+ * F10.7 (sfu) → activity bucket, on the SAME bands the Space Weather panel
+ * uses for its drag regime (lib/spaceweather): < 100 LOW, ≥ 200 HIGH
+ * (solar-maximum-class flux), else MEAN. null / NaN → MEAN. The input is a
+ * daily value; lifetime models normally use an 81-day mean, so the panel
+ * labels it as a suggestion the user can override.
+ */
 export function activityFromF107(f107: number | null): SolarActivity {
   if (f107 === null || !Number.isFinite(f107)) return "MEAN";
-  if (f107 < 100) return "LOW";
-  if (f107 < 160) return "MEAN";
-  return "HIGH";
+  if (f107 < F107_LOW_MAX) return "LOW";
+  if (f107 >= F107_ELEVATED_MAX) return "HIGH";
+  return "MEAN";
 }
 
 /* ------------------------------------------------------------

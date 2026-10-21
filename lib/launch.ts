@@ -167,7 +167,7 @@ export interface TargetOrbit {
 }
 
 export const TARGET_ORBITS: TargetOrbit[] = [
-  { id: "starlink-550", label: "Starlink 550 km / 53°", altitudeKm: 550, inclinationDeg: 53 },
+  { id: "starlink-550", label: "Starlink 550 km / 53° (Gen1 design shell)", altitudeKm: 550, inclinationDeg: 53 },
   { id: "starlink-gen2-530", label: "Starlink Gen2 530 km / 43°", altitudeKm: 530, inclinationDeg: 43 },
   { id: "iss", label: "ISS 420 km / 51.64°", altitudeKm: 420, inclinationDeg: 51.64 },
   { id: "sso-560", label: "SSO 560 km / 97.6°", altitudeKm: 560, inclinationDeg: 97.6 },

@@ -13,11 +13,13 @@
      credits (every POST route is Claude-backed), an uncached
      Space-Track query (/api/debris search or a non-standard list
      size, /api/screen's target lookup) or up to ~20 s of server CPU
-     (/api/screen, /api/cola). Burst 10, 10/min sustained, and the
+     (/api/screen, /api/cola). Burst 20, 10/min sustained, and the
      request must ALSO pass the general bucket. Every dashboard use
      of these routes is a human click or one call per page load, so
-     10/min never affects a real viewer — but a script can no longer
-     drain the Anthropic balance or push Space-Track past 30/min.
+     one viewer stays well inside it. Per-IP buckets are a brake on
+     casual abuse, not a spend guarantee: the Claude-backed GETs are
+     deduplicated per cache expiry inside their routes, and
+     lib/spacetrack.ts enforces its own per-instance Space-Track budget.
 
    Algorithm (classic token bucket, lazily refilled)
    - Each key owns a bucket of at most `capacity` tokens. A fresh
@@ -67,8 +69,12 @@ export const API_RATE_LIMIT = {
  * in this tier spends a token from this bucket AND from API_RATE_LIMIT.
  */
 export const API_EXPENSIVE_RATE_LIMIT = {
-  /** Burst size: ten expensive calls back to back. */
-  capacity: 10,
+  /**
+   * Burst size: twenty expensive calls back to back — one viewer clicking
+   * through every panel inside a minute (5 risk chips, maneuver plan,
+   * cascade, screen, planner, CA memo, COLA, lifetime lookup) spends ~12.
+   */
+  capacity: 20,
   /** Sustained refill: 10 tokens per minute. */
   refillPerSecond: 10 / 60,
   /** Distinct client keys remembered before least-recently-seen eviction. */
@@ -244,8 +250,9 @@ function normalizePath(pathname: string): string {
 
 /**
  * Tier of one request. Pure; mirrors the routes' own parameter
- * parsing so a request is "general" exactly when the route can answer
- * it from a bounded cache without Claude.
+ * parsing so a request is "general" when the route answers it from a
+ * bounded, deduplicated cache (the two Claude-backed GETs call Claude at
+ * most once per cache expiry per instance).
  * - OPTIONS                      → general (preflight; reaches no route)
  * - POST and any other non-GET/HEAD method → expensive (every POST
  *   route calls Claude)

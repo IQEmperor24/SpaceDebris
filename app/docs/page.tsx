@@ -311,9 +311,10 @@ export default function ApiDocsPage() {
             Every panel on the SpaceDebris dashboard is backed by a public JSON endpoint.{" "}
             {costSummary(API_COST_COUNTS)} Each card below is marked. Every /api/* route is
             rate-limited per IP — {API_RATE_LIMIT_PER_MINUTE} requests/min in general,{" "}
-            {API_EXPENSIVE_RATE_LIMIT_PER_MINUTE}/min for expensive calls (Claude, uncached
-            Space-Track lookups, heavy screens) — and GET responses are CORS-enabled for any
-            origin.
+            {API_EXPENSIVE_RATE_LIMIT_PER_MINUTE}/min sustained for expensive calls (every
+            Claude-backed POST, GET /api/screen and /api/cola, uncached Space-Track lookups; the
+            two Claude-backed GETs are served from a route cache and stay in the general tier) —
+            and GET responses are CORS-enabled for any origin.
           </p>
           <div className="flex flex-wrap items-center gap-2">
             <a href="/" className={LINK}>

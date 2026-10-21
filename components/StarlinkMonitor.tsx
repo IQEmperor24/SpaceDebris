@@ -57,16 +57,17 @@ import {
      modifications at other altitudes read RAISING / LOWERING.
    - RAISING / LOWERING objects are credited to the inclination-
      matched shell NEAREST in altitude (one element set cannot show
-     the target shell): at 53° everything 300-500 km lands in the
-     525 km Gen2 row, and the three 53° shells' ±25 km windows
-     overlap (500-575 km). ATTRIBUTION_NOTE says so on screen.
+     the target shell): at 53° everything 300-455 km lands in the
+     480 km row (the 2026 operating altitude), and the four 53° rows'
+     ±25 km windows overlap (455-575 km). ATTRIBUTION_NOTE says so on
+     screen.
    - Altitude = (APOAPSIS + PERIAPSIS) / 2 from the gp strings.
    - Crossing = altitude overlap only (no inclination / phasing
      filter) — potential conjunction partners, not predictions.
      Object class from the OBJECT_NAME heuristic.
-   - Pc 1e-5 autonomous-avoidance threshold and ~40 maneuvers /
-     satellite / year are SpaceX's PUBLISHED figures (FCC filing,
-     Dec 2025), not internal data.
+   - The Pc 3e-7 autonomous-avoidance trigger and ~36 maneuvers /
+     satellite / year are SpaceX's PUBLISHED figures (semiannual FCC
+     report, July 2026), not internal data.
    - Sample = 2,000 most-recently-updated element sets, not the
      whole constellation.
    ============================================================ */
@@ -78,7 +79,7 @@ import {
 /** Client-cache TTL (10 min) + 30 s grace — see DensityProfile.tsx. */
 const REFRESH_MS = 10 * 60 * 1000 + 30 * 1000;
 
-/** "1e-5" — toExponential(0) gives exactly the house notation. */
+/** "3e-7" — toExponential(0) gives exactly the house notation. */
 const THRESHOLD_STR = STARLINK_PC_MANEUVER_THRESHOLD.toExponential(0);
 
 const TEXT_PRIMARY = "#E0E0E0";
@@ -327,7 +328,9 @@ function buildDots(objects: StarlinkObject[]): { dots: LadderDot[]; below: numbe
     const f = hash01(o.noradId || o.name || String(i));
     const span = Math.max(0, col.x1 - col.x0 - 2 * COL_PAD);
     return {
-      key: `${o.noradId || o.name}-${i}`,
+      // Stable identity: NORAD IDs are unique in a gp sample, so a refresh
+      // (EPOCH-desc order shifts every index) patches dots instead of remounting.
+      key: o.noradId ? `n${o.noradId}` : `x${o.name}-${i}`,
       cx: px(col.x0 + COL_PAD + f * span),
       cy: px(yOf(o.altitudeKm)),
       color: PHASE_COLORS[o.phase],
@@ -743,11 +746,13 @@ export default function StarlinkMonitor() {
         </h2>
         <div className="flex shrink-0 items-center gap-3 font-mono text-[0.65rem] text-text-muted">
           <span>
-            sample{" "}
-            <span className="text-text-secondary">
-              {report ? fmtInt(report.sampleSize) : "—"}
-            </span>{" "}
-            obj ·{" "}
+            <span className="hidden sm:inline">
+              sample{" "}
+              <span className="text-text-secondary">
+                {report ? fmtInt(report.sampleSize) : "—"}
+              </span>{" "}
+              obj ·{" "}
+            </span>
             <span className="hidden md:inline">autonomous CA threshold </span>
             Pc ≥ <span className="text-text-secondary">{THRESHOLD_STR}</span>
           </span>
@@ -886,9 +891,11 @@ export default function StarlinkMonitor() {
               <p>
                 Shell table from public FCC authorizations; phase inferred from one element
                 set (orbit raising vs lowering is not distinguishable from a single TLE).
-                Starlink&apos;s published autonomous-avoidance threshold is Pc {THRESHOLD_STR},
-                ten times more conservative than the 1e-4 industry norm; ~40 avoidance
-                maneuvers per satellite per year (SpaceX FCC filing, Dec 2025). Sample ={" "}
+                Starlink&apos;s published autonomous-avoidance trigger is Pc {THRESHOLD_STR}
+                (SpaceX semiannual FCC report, July 2026; earlier filings said 1e-5), more than
+                300× below the 1e-4 industry norm; ~36 avoidance maneuvers per Gen1 satellite per
+                year. The 480 km row is the operating altitude SpaceX announced in Jan 2026 for
+                the 550 km shell, not an FCC grant of its own. Sample ={" "}
                 {sampleLimitStr} most-recently-updated element sets, not the whole
                 constellation.
               </p>

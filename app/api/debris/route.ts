@@ -46,7 +46,14 @@ function getCached(key: string): unknown | null {
   return null;
 }
 
+/** Keys = "list:<limit>" and "search:<query>"; bound them so hostile values cannot grow memory. */
+const MAX_CACHE_ENTRIES = 16;
+
 function setCached(key: string, data: unknown): void {
+  if (!cache.has(key) && cache.size >= MAX_CACHE_ENTRIES) {
+    const oldest = cache.keys().next().value;
+    if (oldest !== undefined) cache.delete(oldest);
+  }
   cache.set(key, { data, expires: Date.now() + DEBRIS_CACHE_TTL_MS });
 }
 

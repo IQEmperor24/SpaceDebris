@@ -75,8 +75,9 @@ import {
      attribute write (CPU-side Float32Array) + bounding-sphere refresh.
      The GPU upload (bufferSubData) happens later inside
      renderer.render() and is NOT timed, so "throughput" is end-to-end
-     on the CPU side, not SGP4-only. Frame budget compares the last
-     tick with one 60 Hz frame (16.7 ms).
+     on the CPU side, not SGP4-only. Throughput and frame budget use
+     the ring's p50 tick against one 60 Hz frame (16.7 ms); "last tick"
+     is the raw sample.
    - p50 / p95 are nearest-rank over the bus's bounded rolling window
      (RING in lib/telemetry.ts — not exported, so no count is
      hard-coded here). performance.now() resolution is
@@ -1110,13 +1111,17 @@ export default function SystemTelemetry() {
   const map = bus ? bus.snap.map : null;
   const lastTickMs = map ? map.lastTickMs : null;
   const hasTicks = map !== null && map.samples > 0 && lastTickMs !== null;
+  // Headline numbers come from the ring's p50, not the last sample: with a
+  // 1 ms performance.now() (Safari, Firefox without COOP/COEP) a ~1.5 ms
+  // tick reads 1 or 2 ms and a last-sample headline would flip 2× a second.
+  const p50TickMs = map ? map.p50TickMs : null;
   const throughput =
-    map !== null && lastTickMs !== null && lastTickMs > 0 && map.objects > 0
-      ? (map.objects / lastTickMs) * 1000
+    map !== null && p50TickMs !== null && p50TickMs > 0 && map.objects > 0
+      ? (map.objects / p50TickMs) * 1000
       : null;
   const frameFraction =
-    lastTickMs !== null && Number.isFinite(lastTickMs)
-      ? lastTickMs / FRAME_BUDGET_MS
+    p50TickMs !== null && Number.isFinite(p50TickMs)
+      ? p50TickMs / FRAME_BUDGET_MS
       : Number.NaN;
   const lastTickAtText =
     map && map.lastTickAt !== null && Number.isFinite(map.lastTickAt)
@@ -1281,7 +1286,7 @@ export default function SystemTelemetry() {
                   <BigStat
                     label="Frame budget"
                     value={fmtPct(frameFraction)}
-                    sub="last tick ÷ 16.7 ms"
+                    sub="p50 tick ÷ 16.7 ms"
                     color={Number.isFinite(frameFraction) ? levelColor(frameFraction) : undefined}
                     testId="telemetry-map-frame-budget"
                   />
@@ -1335,7 +1340,7 @@ export default function SystemTelemetry() {
             <SectionTitle title="API LATENCY" meta="this browser · ms" />
             {routes.length === 0 ? (
               <div className="font-mono text-xs text-text-muted" data-testid="telemetry-api-empty">
-                no instrumented calls yet — Session 6 panels report through timedFetch
+                no API calls measured yet — latency is recorded for routes called through timedFetch
               </div>
             ) : (
               <>

@@ -604,7 +604,7 @@ export function screenTarget(
       insideKeepOutBox,
       severity: gradeSeverity(pc, best.missKm, insideKeepOutBox),
       // Session 6 — both ECI (TEME) states at TCA, copied from the refined
-      // golden-section evaluation, for the Autonomous Avoidance Planner.
+      // golden-section evaluation, for the Avoidance Burn Planner.
       targetStateEci: copyState(best.target),
       secondaryStateEci: copyState(best.secondary),
     });

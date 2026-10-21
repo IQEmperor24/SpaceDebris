@@ -28,7 +28,9 @@ import {
         200  — at least one feed parsed (partial results carry the
                other feed's message in `errors`, never a 5xx)
         503  — BOTH feeds failed → { error, detail }
-   4. Cache: single-key in-memory Map.
+   4. Cache: single-key in-memory Map, plus ONE in-flight load per
+      instance so concurrent cold callers (two panels mount together)
+      share a single pair of NOAA requests.
         15 min when both feeds succeeded (SWPC Kp updates every
         3 h / F10.7 daily, so 15 min is already generous), and
         2 min when one feed failed so a transient upstream hiccup
@@ -119,6 +121,66 @@ function resolveFeed(
   return { reading };
 }
 
+type LoadResult =
+  | { kind: "ok"; status: SpaceWeatherStatus }
+  | { kind: "unavailable"; detail: string };
+
+/**
+ * One in-flight load per instance. The Space Weather panel and the
+ * Disposal Compliance panel mount together and both ask for this route,
+ * so concurrent cold callers share ONE pair of NOAA requests instead of
+ * each firing their own. Cleared when the load settles; the TTL cache
+ * then serves everyone until it expires.
+ */
+let inFlight: Promise<LoadResult> | null = null;
+
+async function loadStatus(): Promise<LoadResult> {
+  const [kpSettled, f107Settled] = await Promise.allSettled([
+    fetchSwpcJson(SWPC_KP_URL),
+    fetchSwpcJson(SWPC_F107_URL),
+  ]);
+
+  const kp = resolveFeed(
+    kpSettled,
+    parseKpResponse,
+    "SWPC Kp feed returned no finite Kp value."
+  );
+  const f107 = resolveFeed(
+    f107Settled,
+    parseF107Response,
+    "SWPC F10.7 feed returned no finite flux value."
+  );
+
+  const errors: { kp?: string; f107?: string } = {};
+  if (kp.error) errors.kp = kp.error;
+  if (f107.error) errors.f107 = f107.error;
+
+  if (!kp.reading && !f107.reading) {
+    const detail = `kp: ${kp.error ?? "unavailable"}; f107: ${
+      f107.error ?? "unavailable"
+    }`;
+    console.error("[/api/spaceweather] error:", detail);
+    return { kind: "unavailable", detail };
+  }
+
+  const status = buildSpaceWeatherStatus({
+    fetchedAt: new Date().toISOString(),
+    kp: kp.reading,
+    f107: f107.reading,
+    errors,
+  });
+
+  const bothOk = kp.reading !== null && f107.reading !== null;
+  setCached(status, bothOk ? CACHE_TTL_FULL_MS : CACHE_TTL_PARTIAL_MS);
+  if (!bothOk) {
+    console.error(
+      "[/api/spaceweather] partial:",
+      JSON.stringify(errors)
+    );
+  }
+  return { kind: "ok", status };
+}
+
 export async function GET(): Promise<NextResponse> {
   const cached = getCached();
   if (cached) {
@@ -126,54 +188,20 @@ export async function GET(): Promise<NextResponse> {
   }
 
   try {
-    const [kpSettled, f107Settled] = await Promise.allSettled([
-      fetchSwpcJson(SWPC_KP_URL),
-      fetchSwpcJson(SWPC_F107_URL),
-    ]);
+    if (!inFlight) {
+      inFlight = loadStatus().finally(() => {
+        inFlight = null;
+      });
+    }
+    const result = await inFlight;
 
-    const kp = resolveFeed(
-      kpSettled,
-      parseKpResponse,
-      "SWPC Kp feed returned no finite Kp value."
-    );
-    const f107 = resolveFeed(
-      f107Settled,
-      parseF107Response,
-      "SWPC F10.7 feed returned no finite flux value."
-    );
-
-    const errors: { kp?: string; f107?: string } = {};
-    if (kp.error) errors.kp = kp.error;
-    if (f107.error) errors.f107 = f107.error;
-
-    if (!kp.reading && !f107.reading) {
-      const detail = `kp: ${kp.error ?? "unavailable"}; f107: ${
-        f107.error ?? "unavailable"
-      }`;
-      console.error("[/api/spaceweather] error:", detail);
+    if (result.kind === "unavailable") {
       return NextResponse.json(
-        { error: "NOAA SWPC space-weather feeds are unavailable.", detail },
+        { error: "NOAA SWPC space-weather feeds are unavailable.", detail: result.detail },
         { status: 503 }
       );
     }
-
-    const status = buildSpaceWeatherStatus({
-      fetchedAt: new Date().toISOString(),
-      kp: kp.reading,
-      f107: f107.reading,
-      errors,
-    });
-
-    const bothOk = kp.reading !== null && f107.reading !== null;
-    setCached(status, bothOk ? CACHE_TTL_FULL_MS : CACHE_TTL_PARTIAL_MS);
-    if (!bothOk) {
-      console.error(
-        "[/api/spaceweather] partial:",
-        JSON.stringify(errors)
-      );
-    }
-
-    return NextResponse.json(status);
+    return NextResponse.json(result.status);
   } catch (err) {
     const detail = err instanceof Error ? err.message : "Unknown error";
     console.error("[/api/spaceweather] error:", detail);

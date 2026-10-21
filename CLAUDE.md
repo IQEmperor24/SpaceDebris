@@ -1,7 +1,7 @@
 # SpaceDebris — CLAUDE.md
 # Holy Grail Context File for Claude Code (Opus)
 # READ THIS ENTIRELY BEFORE RESPONDING TO ANY PROMPT
-# Last updated: End of Session 6 — SpaceX-recruiter upgrade (7 more features)
+# Last updated: End of Session 6 — SpaceX-ops upgrade (7 more features)
 # Phases 1, 2, 3 COMPLETE · Session 5 (7) LIVE on main · Session 6 (7) on branch feature/spacex-upgrade
 
 ---
@@ -239,7 +239,7 @@ merged to main (commit 260229c) and LIVE at space-debris-two.vercel.app.
   feature: JD/GMST, TLE elements, SGP4 propagation with guards for the
   satellite.js 5.0.0 error paths, RIC frame, look angles, decay
   estimate, 2-D probability of collision, NASA ISS thresholds + keep-out
-  box, JSC site constants. 42 node tests pass against a real ISS TLE.
+  box, JSC site constants. 42 node tests pass against an ISS-like synthetic TLE.
 - lib/debrisClient.ts — one shared browser-side /api/debris sample for
   panels 4/5/6 (one request, 10-min TTL, in-flight dedupe)
 - lib/prompts.ts — Screening* API contracts + SCREENING_ASSESSMENT_PROMPT
@@ -277,25 +277,25 @@ merged to main (commit 260229c) and LIVE at space-debris-two.vercel.app.
 
 ---
 
-## Session 6 — SpaceX-Recruiter Upgrade ✅ (7 features)
-Context: Aayush applied to dozens of SpaceX new-grad roles with SpaceDebris
-as the showcase project. SpaceX culture = first principles, real ops
-relevance (Starlink autonomous CA at Pc 1e-5, ~40 maneuvers/sat/yr),
-performance, testing discipline, honest assumptions. Recruiters open the
-GITHUB REPO first, then the live site — so this session also fixed the
-repo itself (README, tests, CI, public API docs).
+## Session 6 — SpaceX-Ops Upgrade ✅ (7 features)
+Context: ops-relevant features in the SpaceX idiom — first principles,
+Starlink autonomous CA at Pc 3e-7 (~36-40 maneuvers/sat/yr), performance,
+testing discipline, honest assumptions. The repository itself is part of
+the product (README, tests, CI, public API docs), so this session fixed
+that too.
 Built in a Claude Code cloud session on branch feature/spacex-upgrade
 (merge to main = production deploy; see Session 5 merge notes).
 
 ### S6 Feature 1 — Starlink Constellation Monitor ✅
 - lib/starlink.ts, components/StarlinkMonitor.tsx
 - Public FCC shell table (Gen1 550/53, 540/53.2, 570/70, 560/97.6;
-  Gen2 525/53, 530/43, 535/33), sample objects classified per shell as
+  Gen2 525/53, 530/43, 535/33) + a 480/53 row for the 2026 operating
+  altitude (SpaceX, Jan 2026), sample objects classified per shell as
   OPERATIONAL / ORBIT RAISING-LOWERING / DEORBITING / UNASSIGNED, per-shell
   crossing-object exposure (debris / R/B / payload), SVG shell ladder.
 - Zero Claude cost. Phase is inferred from ONE element set (says so).
 
-### S6 Feature 2 — Autonomous Avoidance Planner ✅
+### S6 Feature 2 — Avoidance Burn Planner ✅
 - lib/maneuver.ts, components/AvoidancePlanner.tsx (+ lib/screening.ts
   now attaches targetStateEci / secondaryStateEci at TCA to each approach)
 - Clohessy-Wiltshire (Hill) linearised relative motion → displacement at
@@ -303,7 +303,8 @@ Built in a Claude Code cloud session on branch feature/spacex-upgrade
   against two-body propagation (lib/orbital twoBodyPropagate).
 - Trade space: burn lead {12h…30m} × Δv {1…100 cm/s} × prograde/retrograde
   → new miss + Pc (same assumed covariance as the screen). Decision rule:
-  Starlink's Pc ≥ 1e-5 (STARLINK_PC_MANEUVER_THRESHOLD). Recommends the
+  Starlink's Pc ≥ 3e-7 (STARLINK_PC_MANEUVER_THRESHOLD, July 2026 FCC report;
+  NASA's 1e-4 red line when the screened target is the ISS). Recommends the
   minimum-Δv burn that clears the threshold; propellant via Tsiolkovsky
   and burn time for vehicle presets (Starlink V2 Mini-class / V1.5-class /
   generic hydrazine bus — public estimates, labelled).
@@ -318,8 +319,10 @@ Built in a Claude Code cloud session on branch feature/spacex-upgrade
   plane through the site (raanThroughPosition), two-body coast 20 min,
   screened at 30 s steps against the catalog sample (altitude prefilter).
   NO-GO < 5 km, CAUTION < 25 km, else GO; next clear window reported.
-- GET /api/cola?site=&orbit=&minutes= (5-min cache, maxDuration 30,
-  compute budget + truncated flag). Simplified model — labelled.
+- GET /api/cola?site=&orbit=&minutes= (cache keyed per start MINUTE with a
+  5-min TTL, so only repeats inside the same minute hit; the panel auto-runs
+  one screen when it first scrolls into view; maxDuration 30, compute
+  budget + truncated flag). Simplified model — labelled.
 
 ### S6 Feature 4 — Orbital Lifetime & FCC 5-Year Disposal Compliance ✅
 - lib/lifetime.ts, components/DisposalCompliance.tsx
@@ -336,8 +339,11 @@ Built in a Claude Code cloud session on branch feature/spacex-upgrade
 ### S6 Feature 5 — Public API: OpenAPI + /docs + rate limit + CORS ✅
 - lib/apiSpec.ts (single source for the OpenAPI 3.1 doc AND the docs
   page), lib/rateLimit.ts (pure token bucket), app/api/openapi/route.ts,
-  app/docs/page.tsx (server component), middleware.ts (Edge: 120 req/min
-  per IP on /api/*, X-RateLimit-* headers, 429 JSON, CORS for GET/OPTIONS).
+  app/docs/page.tsx (server component), middleware.ts (Edge: two token
+  buckets per IP on /api/* — general 120 burst / 120 per min, expensive
+  20 burst / 10 per min for every Claude POST, GET screen/cola and
+  uncached debris lookups — X-RateLimit-* headers, 429 JSON, CORS for
+  GET/OPTIONS).
 - Every route documented with params, response example, curl, cost
   (deterministic vs Claude) and cache. Link "API docs →" in the jump nav.
 
@@ -347,7 +353,7 @@ Built in a Claude Code cloud session on branch feature/spacex-upgrade
   .github/workflows/ci.yml (typecheck → test → build; no secrets needed),
   .nvmrc (22), README.md (architecture diagram, features, physics +
   assumptions, API, engineering, local dev — NO credentials or emails).
-- npm test must stay green: it is the recruiter-facing proof.
+- npm test must stay green: it is the public proof that the physics is right.
 
 ### S6 Feature 7 — System Telemetry ✅
 - lib/telemetry.ts (client bus: map tick ms, FPS, per-route latency via
@@ -374,10 +380,11 @@ Built in a Claude Code cloud session on branch feature/spacex-upgrade
 ### Session 6 verification (cloud session)
 - npm run build: CLEAN — 16 routes (+ /api/cola, /api/openapi), /docs
   static page, Edge middleware 28.6 kB, / first-load JS 96.8 kB.
-- npm run typecheck: 0 errors. npm test: 134/134 (orbital 14, spacetrack
-  8, screening 7, iss 9, spaceweather 11, density 10, fragmentation 9,
-  starlink 11, lifetime 17, maneuver 13, launch 11, rateLimit 14) in ~5 s,
-  no network.
+- npm run typecheck: 0 errors. npm test: 144/144 (orbital, spacetrack
+  incl. alias + soft budget, screening, iss, spaceweather, density,
+  fragmentation, starlink incl. 480 row + DEB guard, lifetime, maneuver
+  at the 3e-7 trigger, launch, rateLimit incl. tier classifier + client
+  keys, apiSpec ↔ route handlers) in ~6 s, no network.
 - Playwright (headless Chromium, every /api/* mocked): 26/26 — the 15
   Session 5 steps unchanged + 11 Session 6 steps (Starlink rows/ladder,
   avoidance trade space + recommendation + sensitivity, COLA timeline +
@@ -385,7 +392,11 @@ Built in a Claude Code cloud session on branch feature/spacex-upgrade
   map / benchmark, /docs cards + /api/openapi + rate-limit headers);
   0 console errors; no horizontal overflow at 1440 / 1280 / 1024 / 390
   (dashboard and /docs); header 60 px; hero grid budget raised to
-  calc(100vh − 9.5rem) to make room for the jump nav.
+  calc(100vh − 10.25rem) to make room for the jump nav (readable
+  text-secondary links with 12 px tap padding).
+- Five-lens adversarial review (recruiter-repo, page-ux, physics-honesty,
+  prod-security, lifecycle-perf) → fixes #26-#33 above; remaining
+  judgement calls are listed in the Session 6 lessons.
 - Space-Track / Anthropic / NOAA still NOT reachable from the sandbox;
   first production check after deploy: open every panel once, run the
   screener on ISS (planner reads its cached result), run one COLA screen.
@@ -425,7 +436,7 @@ C:\Users\user\SpaceDebris\
 - middleware.ts                 DONE — S6 F5 per-IP rate limit + CORS on /api/*
 - tests/                        DONE — S6 F6 node:test suites (npm test)
 - .github/workflows/ci.yml      DONE — S6 F6 CI: typecheck → test → build
-- README.md                     DONE — S6 F6 recruiter-facing README
+- README.md                     DONE — S6 F6 public README (architecture, physics, API)
 - .nvmrc                        DONE — Node 22
 - lib/
   - anthropic.ts                DONE — Model: claude-sonnet-4-6
@@ -467,7 +478,7 @@ C:\Users\user\SpaceDebris\
 
 ## Environment Variables — .env.local
 ANTHROPIC_API_KEY=Aayush's own key (created Session 4)
-SPACETRACK_USERNAME=a2khazan@uwaterloo.ca
+SPACETRACK_USERNAME=<your Space-Track login — lives in .env.local only>
 SPACETRACK_PASSWORD=set during Space-Track registration
 
 File: C:\Users\user\SpaceDebris\.env.local
@@ -517,20 +528,57 @@ ANTHROPIC_API_KEY was updated in BOTH .env.local AND Vercel Session 4.
 24. Screening keeps the closest approach per secondary (co-orbital objects
     would otherwise produce one row per revolution)
 
-### Session 6 (SpaceX-recruiter upgrade)
+### Session 6 (SpaceX-ops upgrade)
 25. PRE-EXISTING BUG FIXED: cdm_public MIN_RNG is METRES, not km. The alert
     feed, fleet severity thresholds, ISS console and the conjunction
     prompt now convert through cdmMissDistanceKm(); "388 km" was 388 m.
     Fleet HIGH/CRITICAL counts become realistic (miss-based tiers finally
     trigger).
+26. Fleet Top Threats now rank by Pc first, miss distance as tie-break
+    (the old 10/miss + 1000·Pc score let a 150 m / Pc 2e-6 event outrank
+    a 600 m / Pc 5e-4 one once MIN_RNG was read correctly).
+27. searchTLE aliases bare "ISS" → NORAD 25544 in ONE place
+    (lib/spacetrack.ts) and caches single-object lookups 5 min with
+    in-flight dedupe; the screen route's private alias is gone. Before,
+    the lifetime panel's "ISS" default was a wildcard name search that
+    could return ISS DEB or SWISSCUBE.
+28. Starlink trigger corrected to Pc 3e-7 (SpaceX semiannual FCC report,
+    1 July 2026; earlier filings 1e-5). The planner applies NASA's 1e-4
+    red line when the screened target is the ISS and says so on screen;
+    its event picker ranks by Pc (what the rule uses), not miss distance.
+29. Starlink panel: 480 km / 53° row for the 2026 lowering; "STARLINK-x
+    DEB" fragments are debris (crossers), not satellites; ṅ/2 read from
+    TLE columns without building an SGP4 record per row (~90 % cheaper).
+30. Space-Track SOFT BUDGET enforced per instance in lib/spacetrack.ts
+    (25/min, 250/hr under the published 30/300): SpaceTrackBudgetError is
+    thrown locally before any HTTP call; /api/health reports a refused
+    probe as DEGRADED. Shared dataset cache capped at 64 entries, the
+    debris route cache at 16.
+31. In-flight dedupe added to the Claude-backed GETs (/api/conjunctions,
+    /api/fleet) and to /api/spaceweather, /api/health: concurrent cold
+    callers share ONE upstream call. Expensive rate-limit tier burst
+    raised 10 → 20 (one viewer clicking every panel spends ~12 in a
+    minute); sustained 10/min unchanged.
+32. Lifetime panel: F10.7 → activity bands now match the Space Weather
+    panel (LOW < 100, HIGH ≥ 200, else MEAN) via the shared constants;
+    caution line when the Starlink-class preset is applied to a
+    non-Starlink object (with the implied B); ladder memo split from the
+    single integration; chart measured in a layout effect.
+33. Repo hygiene: Space-Track login e-mail scrubbed from CLAUDE.md (HEAD
+    only — history keeps it; rotate the password if that matters), README
+    documents both rate-limit tiers, the per-instance budget counters,
+    the 15-row screen cap and the CW check honestly; CI actions bumped
+    to v5 (node24); apiSpec test pins /docs to the real route handlers.
 
 ---
 
 ## Space-Track.org API — Critical Facts
-- Username: a2khazan@uwaterloo.ca
+- Username: the Space-Track login in .env.local (never commit it)
 - Cookie name: chocolatechip (correct — not a bug)
 - Cookie parse: setCookie.split(';')[0]
-- Rate limit: 30 req/min, 300/hr
+- Rate limit: 30 req/min, 300/hr — lib/spacetrack.ts enforces a SOFT
+  per-instance budget of 25/min, 250/hr BEFORE each request
+  (SpaceTrackBudgetError, no HTTP call); counters on /api/health
 - TLE endpoint: class/gp/ (NOT tle_latest — returns 404)
 - CDM endpoint: class/cdm_public/ (working)
 - MIN_RNG is in METRES (CCSDS CDM convention) — convert with
@@ -565,7 +613,11 @@ ANTHROPIC_API_KEY was updated in BOTH .env.local AND Vercel Session 4.
 - 14,500-15,600 currently active satellites
 - SpaceX Starlink: 10,000+ satellites (65% of active)
 - SpaceX: 300,000 maneuvers in 2025 (50% YoY increase)
-- ~40 maneuvers per Starlink satellite per year
+- ~36-40 maneuvers per Starlink satellite per year
+- Starlink maneuver trigger: Pc 3e-7 (SpaceX semiannual FCC report,
+  1 July 2026; earlier filings 1e-5). Industry norm 1e-4.
+- Jan 2026: SpaceX began lowering the ~4,400 satellites of the 550 km
+  shell to ~480 km (through 2026) — the Starlink panel has a 480 km row
 - 500,000+ objects 1-10cm — untrackable kill zone
 - Source: SpaceX FCC filing Dec 2025, New Scientist Jan 23 2026
 - GEO debris: never deorbits (thousands of years)
@@ -733,7 +785,7 @@ Revenue impact: TRILLION DOLLAR
 - After a cloud-session push to main, run `git pull origin main` locally
   before editing anything.
 - Pattern that worked: shared pure library first (lib/orbital.ts, with a
-  node test against a real ISS TLE), API contracts second
+  node test against an ISS-like synthetic TLE), API contracts second
   (lib/prompts.ts), THEN parallel feature agents on disjoint files, each
   followed by an adversarial review + fix pass, then one build + one
   Playwright run with every /api/* mocked (the sandbox cannot reach
@@ -750,6 +802,39 @@ Revenue impact: TRILLION DOLLAR
   parseKpResponse / parseF107Response in lib/spaceweather.ts need touching.
 - Node 22 runs TypeScript directly: node --experimental-strip-types x.ts
   (great for testing pure lib files without a test framework).
+
+### Session 6 (cloud session — SpaceX-ops upgrade)
+- Same pattern as Session 5 (shared lib → contracts → parallel feature
+  agents on disjoint files → adversarial review → one build + Playwright
+  run), then a FIVE-LENS cross-cutting review of the merged tree
+  (recruiter-repo, page-ux, physics-honesty, prod-security,
+  lifecycle-perf). The cross-cut found what per-feature reviews cannot:
+  two panels grading the same event with different rules, a unit fix
+  that silently changed a ranking, a public figure that had moved
+  (Starlink trigger 1e-5 → 3e-7), and a memory file leaking an e-mail.
+- Check public figures against the CURRENT filing before citing them.
+  SpaceX's semiannual Starlink reports move: Dec 2025 – May 2026 report
+  (filed 1 July 2026) = Pc 3e-7 trigger, ~36 maneuvers/Gen1 sat/yr; the
+  550 km shell is being lowered to ~480 km through 2026. Direct-to-Cell
+  altitude was NOT verified — do not add a DTC row without a source.
+- Per-IP rate limits are a brake, not a spend guarantee. Spend guards
+  that actually hold are in the routes (in-flight dedupe per cache
+  expiry) and in lib/spacetrack.ts (soft budget). A global per-instance
+  Claude bucket in lib/anthropic.ts + a monthly spend cap in the
+  Anthropic Console remain the next step.
+- Judgement calls left to Aayush (not changed by the agent):
+  1. CLAUDE.md is public: the Operator Note, Business Development,
+     Revenue Strategy, Roblox / aunt's-key notes and CONTEXT.md read
+     oddly next to the README. Move them to an untracked CLAUDE.local.md
+     (Claude Code loads it automatically; add it to .gitignore) and
+     `git rm --cached .claude/settings.local.json`.
+  2. README "Author" could say the project was built with Claude Code
+     as a pair programmer — the commit trailers already do.
+  3. The Telemetry panel polls /api/health every 60 s while visible even
+     when scrolled off; gating it on IntersectionObserver would save
+     ~60 invocations/hour per idle viewer.
+  4. Merge Session 6 with `git merge --squash` so the "wip" commits
+     (which do not build) never land on main's bisectable history.
 
 ---
 
@@ -781,7 +866,7 @@ Session 4:    Phases 1-3 complete ($4.04)
 Session 5:    NASA / JSC upgrade — 7 features, real SGP4 physics
               (Claude Code cloud session; $0 Anthropic API spend —
               nothing was called at runtime in the sandbox)
-Session 6:    SpaceX-recruiter upgrade — 7 deterministic features,
+Session 6:    SpaceX-ops upgrade — 7 deterministic features,
               public API + docs, in-repo tests + CI + README, and the
               metres→km CDM fix (cloud session; $0 API spend)
 Total:        ~$24 invested in API credits

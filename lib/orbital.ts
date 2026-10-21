@@ -72,11 +72,13 @@ export const ISS_PC_RED_THRESHOLD = 1e-4;
 export const ISS_PC_YELLOW_THRESHOLD = 1e-5;
 
 /**
- * SpaceX Starlink autonomous collision-avoidance threshold: the
- * constellation maneuvers when Pc exceeds 1e-5 — ten times more
- * conservative than the industry-standard 1e-4 (SpaceX FCC filings).
+ * SpaceX Starlink autonomous collision-avoidance trigger: the
+ * constellation maneuvers when Pc exceeds 3e-7 — more than 300× below
+ * the industry-standard 1e-4 (SpaceX semiannual Starlink report to the
+ * FCC, 1 July 2026, covering Dec 2025 – May 2026). Earlier filings
+ * (2022-23) cited 1e-5; the trigger has only ever been tightened.
  */
-export const STARLINK_PC_MANEUVER_THRESHOLD = 1e-5;
+export const STARLINK_PC_MANEUVER_THRESHOLD = 3e-7;
 
 /**
  * NASA ISS screening "pizza box" keep-out volume, half-widths in km
@@ -803,8 +805,9 @@ export function circularOrbitState(p: CircularOrbitParams): StateVector {
 /**
  * Right ascension of the ascending node for an orbit of inclination
  * `inclinationDeg` whose plane contains the given ECI position (a
- * launch site at launch time), choosing the ASCENDING pass (vehicle
- * heading north-east). Returns null when the site latitude exceeds
+ * launch site at launch time), choosing the ASCENDING (northbound) pass:
+ * north-east for prograde inclinations, north-west for retrograde ones
+ * (e.g. SSO at 97.6°). Returns null when the site latitude exceeds
  * the inclination (no such plane exists).
  */
 export function raanThroughPosition(
@@ -821,7 +824,7 @@ export function raanThroughPosition(
   if (!Number.isFinite(s) || Math.abs(s) > 1) return null;
   // Plane normal n = (sin i sin O, -sin i cos O, cos i); n·r = 0 gives
   // sin(O - alpha) = s. The ascending-pass solution is O = alpha + asin(s)
-  // ... when the site is north of the node and moving north-east.
+  // ... when the site is north of the node and moving northbound.
   return normalizeDeg360(radToDeg(alpha + Math.asin(s)));
 }
 

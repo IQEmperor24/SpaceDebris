@@ -559,7 +559,7 @@ const ENDPOINT_DEFS: EndpointDef[] = [
       "(Tsiolkovsky, Isp 220 s and 1,000 kg wet mass assumed) and a trailing " +
       "RECOMMENDATION line, extracted into `recommendation` (MONITOR | PREPARE | EXECUTE | " +
       "EMERGENCY; PREPARE when the line is missing). For the deterministic Clohessy-Wiltshire " +
-      "trade study see the Autonomous Avoidance Planner panel on the dashboard.",
+      "trade study see the Avoidance Burn Planner panel on the dashboard.",
     params: [
       { name: "satelliteName", in: "body", type: "string", required: true, example: "ISS (ZARYA)", description: "Display name." },
       { name: "noradId", in: "body", type: "string", required: true, example: "25544", description: "NORAD catalog number." },
@@ -949,7 +949,7 @@ const ENDPOINT_DEFS: EndpointDef[] = [
       ],
       candidatesScreened: 640,
       sampleSize: 2000,
-      propagations: 52480,
+      propagations: 183360, // (119·2 + 41 grid slots) × 640 candidates + 120 × 40 vehicle steps
       computeMs: 912,
       truncated: false,
       summary: { go: 117, caution: 3, noGo: 0, nextClearWindow: { start: EX_TIME, minutes: 37 } },

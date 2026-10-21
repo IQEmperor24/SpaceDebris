@@ -1,5 +1,5 @@
 import type { SpaceTrackTLE } from "@/lib/spacetrack";
-import { classifyObjectName, meanAltitudeKm, tleElements } from "@/lib/orbital";
+import { classifyObjectName, meanAltitudeKm } from "@/lib/orbital";
 
 /* ============================================================
    SpaceDebris — Starlink constellation model (Session 6, F1)
@@ -67,7 +67,7 @@ export interface StarlinkShell {
   label: string;
   altitudeKm: number;
   inclinationDeg: number;
-  /** FCC-authorized satellite count; null when only a combined total exists (Gen2). */
+  /** FCC-authorized satellite count; null when the row is not a grant of its own (Gen2 combined total; the 2026 operating altitude). */
   authorized: number | null;
   generation: "Gen1" | "Gen2";
   note: string;
@@ -81,11 +81,21 @@ export interface StarlinkShell {
 export const GEN2_AUTHORIZED_TOTAL = 7500;
 
 /**
- * Public FCC-authorized Starlink shells (counts: FCC-authorized,
- * public filings). Gen1 per the 2021 modification; Gen2 per the
- * Dec-2022 partial grant.
+ * Public Starlink shells (counts: FCC-authorized, public filings). Gen1
+ * per the 2021 modification; Gen2 per the Dec-2022 partial grant; plus
+ * the ~480 km operating altitude SpaceX announced on 1 Jan 2026 for the
+ * ~4,400 satellites of the 550 km shell (lowered through 2026).
  */
 export const STARLINK_SHELLS: StarlinkShell[] = [
+  {
+    id: "G1-480",
+    label: "480 km · 53.0°",
+    altitudeKm: 480,
+    inclinationDeg: 53.0,
+    authorized: null,
+    generation: "Gen1",
+    note: "Gen1 · 2026 operating altitude — the 550 km shell is being lowered to ~480 km through 2026 (SpaceX, Jan 2026); not a separate FCC grant row",
+  },
   {
     id: "G1-550",
     label: "550 km · 53.0°",
@@ -205,7 +215,7 @@ export interface StarlinkObject {
    */
   shellId: string | null;
   phase: StarlinkPhase;
-  /** TLE line-1 cols 34-43 (ṅ/2, rev/day²) via lib/orbital tleElements; null if unparseable. */
+  /** TLE line-1 cols 34-43 (ṅ/2, rev/day²) read straight from the line; null if unparseable. */
   ndotHalfRevPerDay2: number | null;
 }
 
@@ -308,16 +318,18 @@ export function matchStarlinkShell(altitudeKm: number, inclinationDeg: number): 
 }
 
 /**
- * TLE line-1 ṅ/2 through lib/orbital tleElements (which owns the
- * satellite.js quirks). tleElements falls back to 0 for an unparseable
- * field, so the raw columns are re-checked to report null instead.
+ * TLE line-1 ṅ/2 (cols 34-43, rev/day²), read directly: the field is the
+ * only thing this module needs from the TLE, and lib/orbital tleElements
+ * would build a full SGP4 record per row to get it. Unparseable → null.
  */
 function ndotHalf(obj: SpaceTrackTLE): number | null {
-  const el = tleElements(obj);
-  if (!el) return null;
-  const raw = parseFloat(obj.TLE_LINE1.substring(33, 43));
-  if (!Number.isFinite(raw) || !Number.isFinite(el.ndotHalfRevPerDay2)) return null;
-  return el.ndotHalfRevPerDay2;
+  // Read the field straight from TLE line 1 (cols 34-43, rev/day²) — the
+  // same columns lib/orbital parses — without building an SGP4 record for
+  // every Starlink row just to read one number (~90 % of the report's cost).
+  const l1 = typeof obj.TLE_LINE1 === "string" ? obj.TLE_LINE1 : "";
+  if (l1.length < 43) return null;
+  const raw = parseFloat(l1.substring(33, 43));
+  return Number.isFinite(raw) ? raw : null;
 }
 
 /**
@@ -326,7 +338,9 @@ function ndotHalf(obj: SpaceTrackTLE): number | null {
  * (mean altitude > 0 km, inclination 0–180°).
  */
 export function classifyStarlink(obj: SpaceTrackTLE): StarlinkObject | null {
-  if (!obj || !isStarlinkName(obj.OBJECT_NAME)) return null;
+  // A fragment or stage named "STARLINK-xxxx DEB" / "... R/B" is not a
+  // satellite: it falls through to the crossing (exposure) counts instead.
+  if (!obj || !isStarlinkName(obj.OBJECT_NAME) || classifyObjectName(obj.OBJECT_NAME) !== "PAYLOAD") return null;
 
   const altitudeKm = meanAltitudeKm(obj);
   const inclinationDeg = parseFloat(obj.INCLINATION);
@@ -393,7 +407,7 @@ export function buildStarlinkReport(
   for (const row of rows) {
     if (!row || typeof row !== "object") continue;
 
-    if (isStarlinkName(row.OBJECT_NAME)) {
+    if (isStarlinkName(row.OBJECT_NAME) && classifyObjectName(row.OBJECT_NAME) === "PAYLOAD") {
       const o = classifyStarlink(row);
       if (!o) {
         skippedInvalid++;

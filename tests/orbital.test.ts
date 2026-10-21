@@ -44,7 +44,7 @@ test("time: Julian date, GMST, day-of-year and formatters", () => {
   assert.equal(O.normalizeDeg180(180), 180);
 });
 
-test("TLE parsing: ISS elements match the published orbit", () => {
+test("TLE parsing: ISS-like fixture elements are recovered (51.64°, ~420 km, n-dot/2, B*)", () => {
   assert.equal(O.parseTle("garbage", "lines"), null);
   const el = issElements();
   approx(el.periodMinutes, 92.93, 0.2, "period");
@@ -248,7 +248,7 @@ test("launch geometry: site ECI, plane through the site, ascending pass", () => 
 test("thresholds: NASA ISS and Starlink public Pc values", () => {
   assert.equal(O.ISS_PC_RED_THRESHOLD, 1e-4);
   assert.equal(O.ISS_PC_YELLOW_THRESHOLD, 1e-5);
-  assert.equal(O.STARLINK_PC_MANEUVER_THRESHOLD, 1e-5);
+  assert.equal(O.STARLINK_PC_MANEUVER_THRESHOLD, 3e-7, "SpaceX semiannual FCC report, July 2026");
   assert.deepEqual({ ...O.ISS_KEEP_OUT_BOX_KM }, { radial: 2, inTrack: 25, crossTrack: 25 });
 });
 

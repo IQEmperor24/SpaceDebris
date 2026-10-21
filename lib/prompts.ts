@@ -463,7 +463,7 @@ Decision criteria for the trailing recommendation:
 - EMERGENCY: score >= 85 OR overallThreat is CRITICAL — execute immediately, expedite ground confirmation.
 
 Engineering rules:
-- Delta-V should be the SMALLEST that puts post-maneuver miss distance above ~25 km (industry safe-pass threshold).
+- Delta-V should be the SMALLEST that brings the post-maneuver probability of collision below 1e-4 (the NASA CARA red line) with margin; operators decide on Pc, not on a fixed miss distance. State that miss distance and Pc are estimates made without operator covariance.
 - PROGRADE adds altitude / period; RETROGRADE subtracts. NORMAL / ANTI-NORMAL rotate the orbital plane (use only when the conjunction geometry favors a cross-track separation).
 - Earlier burns require less delta-V (orbital mechanics leverage); prefer windows at TCA - 6h or earlier when feasible.
 - Assume satellite wet mass 1000 kg and Isp 220 s for hydrazine fuel estimates unless the input states otherwise. State the assumption inside the RATIONALE section if it materially affects the plan.
@@ -658,7 +658,7 @@ export interface ScreeningCloseApproach {
   severity: ThreatLevel;
   /**
    * Session 6 — ECI (TEME) states of both objects AT TCA, km and km/s,
-   * so the Autonomous Avoidance Planner can re-evaluate Pc after a
+   * so the Avoidance Burn Planner can re-evaluate Pc after a
    * hypothetical burn without re-running the screen. Filled by
    * /api/screen; NOT forwarded to Claude (the assess route drops them).
    */

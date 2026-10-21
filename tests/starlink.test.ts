@@ -15,9 +15,11 @@ function shell(r: S.StarlinkReport, id: string): S.ShellReport {
   return s;
 }
 
-test("shell table: the 7 public FCC shells (Gen1 + Gen2)", () => {
-  assert.equal(S.STARLINK_SHELLS.length, 7);
-  assert.equal(new Set(S.STARLINK_SHELLS.map((s) => s.id)).size, 7);
+test("shell table: the 7 public FCC shells (Gen1 + Gen2) + the 480 km 2026 operating altitude", () => {
+  assert.equal(S.STARLINK_SHELLS.length, 8);
+  assert.equal(new Set(S.STARLINK_SHELLS.map((s) => s.id)).size, 8);
+  const s480 = S.STARLINK_SHELLS.find((s) => s.altitudeKm === 480 && s.inclinationDeg === 53.0);
+  assert.ok(s480 && s480.authorized === null && s480.generation === "Gen1", "480 km row is not an FCC grant of its own");
   const at = (a: number, i: number) => S.STARLINK_SHELLS.find((s) => s.altitudeKm === a && s.inclinationDeg === i);
   assert.equal(at(550, 53.0)?.authorized, 1584);
   assert.equal(at(540, 53.2)?.authorized, 1584);
@@ -60,8 +62,10 @@ test("classification: operational shells, Gen2 shells, transit, deorbit, unassig
   assert.equal(S.classifyStarlink(mk("STARLINK-4", 536, 534, 33.0))?.shellId, "G2-535");
   assert.equal(S.classifyStarlink(mk("STARLINK-5", 524, 522, 53.0))?.shellId, "G2-525");
 
-  const raising = S.classifyStarlink(mk("STARLINK-1002", 481, 479, 53.0));
-  assert.deepEqual([raising?.phase, raising?.shellId], ["ORBIT RAISING / LOWERING", "G2-525"]);
+  const lowered = S.classifyStarlink(mk("STARLINK-1002", 481, 479, 53.0));
+  assert.deepEqual([lowered?.phase, lowered?.shellId], ["OPERATIONAL", "G1-480"], "2026: 480 km is an operating altitude");
+  const raising = S.classifyStarlink(mk("STARLINK-1008", 441, 439, 53.0));
+  assert.deepEqual([raising?.phase, raising?.shellId], ["ORBIT RAISING / LOWERING", "G1-480"]);
   const above = S.classifyStarlink(mk("STARLINK-1005", 621, 619, 43.0));
   assert.deepEqual([above?.phase, above?.shellId], ["ORBIT RAISING / LOWERING", "G2-530"]);
   const deorbit = S.classifyStarlink(mk("STARLINK-1003", 260, 240, 53));
@@ -96,6 +100,10 @@ test("n-dot/2 is parsed from TLE line 1 cols 34-43, null when unparseable", () =
 
 test("non-Starlink and invalid rows are rejected", () => {
   assert.equal(S.classifyStarlink(mk("ONEWEB-0001", 1201, 1199, 87.9)), null);
+  assert.equal(S.classifyStarlink(mk("STARLINK-35956 DEB", 549, 547, 53.0)), null, "a Starlink fragment is debris, not a satellite");
+  const withDeb = S.buildStarlinkReport([mk("STARLINK-1", 549, 547, 53.1, "1"), mk("STARLINK-35956 DEB", 549, 547, 53.0, "2")]);
+  assert.equal(withDeb.starlinkTotal, 1);
+  assert.equal(shell(withDeb, "G1-550").crossing.debris, 1, "the fragment counts as a crosser of its shell");
   assert.equal(S.classifyStarlink(mk("STARLINK-9", "", "", 53)), null);
   assert.equal(S.classifyStarlink(mk("STARLINK-9", 550, 548, "abc")), null);
   assert.equal(S.classifyStarlink(mk("STARLINK-9", -10, -20, 53)), null);
@@ -117,15 +125,17 @@ test("report: phase counts, per-shell statistics and crossing exposure", () => {
     mk("ISS (ZARYA)", 422, 418, 51.6, "11"),
   ]);
   assert.deepEqual([r.sampleSize, r.starlinkTotal, r.skippedInvalid], [11, 5, 1]);
-  assert.deepEqual([r.operational, r.transit, r.deorbiting, r.unassigned], [2, 1, 1, 1]);
+  assert.deepEqual([r.operational, r.transit, r.deorbiting, r.unassigned], [3, 0, 1, 1]);
   assert.ok(Math.abs(r.shareOfSample - 5 / 11) < 1e-12);
   assert.equal(r.crossingBandKm, S.DEFAULT_CROSSING_BAND_KM);
   assert.equal(r.objects.length, 5);
 
   const s550 = shell(r, "G1-550");
   assert.deepEqual([s550.operational, s550.transit, s550.meanAltitudeKm, s550.altitudeSpreadKm], [2, 0, 550, 2]);
+  const s480 = shell(r, "G1-480");
+  assert.deepEqual([s480.transit, s480.operational, s480.meanAltitudeKm, s480.altitudeSpreadKm], [0, 1, 480, null], "one object → no spread");
   const s525 = shell(r, "G2-525");
-  assert.deepEqual([s525.transit, s525.operational, s525.meanAltitudeKm, s525.altitudeSpreadKm], [1, 0, null, null]);
+  assert.deepEqual([s525.transit, s525.operational, s525.meanAltitudeKm, s525.altitudeSpreadKm], [0, 0, null, null]);
   // 540-560 km debris crosses 550 and 540; the 200 x 900 km rocket body crosses everything;
   // the TBA object at 545 counts as unknown; the ISS at 420 km crosses nothing.
   assert.deepEqual([s550.crossing.debris, s550.crossing.rocketBody, s550.crossing.unknown, s550.crossing.payload, s550.crossing.total], [1, 1, 1, 0, 3]);
@@ -157,7 +167,7 @@ test("crossing band: edges, custom band, swapped apsides, invalid band falls bac
 
 test("empty and malformed samples are safe", () => {
   const r = S.buildStarlinkReport([]);
-  assert.deepEqual([r.starlinkTotal, r.shareOfSample, r.shells.length], [0, 0, 7]);
+  assert.deepEqual([r.starlinkTotal, r.shareOfSample, r.shells.length], [0, 0, 8]);
   for (const s of r.shells) assert.deepEqual([s.operational, s.meanAltitudeKm, s.crossing.total], [0, null, 0]);
   assert.equal(S.buildStarlinkReport(null as unknown as SpaceTrackTLE[]).sampleSize, 0);
   const holes = S.buildStarlinkReport([null, undefined, mk("STARLINK-1", 549, 547, 53)] as unknown as SpaceTrackTLE[]);

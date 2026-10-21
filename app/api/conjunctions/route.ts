@@ -86,6 +86,57 @@ async function summarize(
   return byId;
 }
 
+interface ConjunctionPayload {
+  count: number;
+  alerts: ConjunctionAlert[];
+}
+
+/**
+ * One in-flight build per instance: concurrent cold GETs (or a burst
+ * right after the 60-s cache expires) share ONE batched Claude call
+ * (~$0.04) instead of each making their own. Cleared when it settles.
+ */
+let inFlight: Promise<ConjunctionPayload> | null = null;
+
+async function buildAlerts(): Promise<ConjunctionPayload> {
+  const cdms = await fetchConjunctions(CONJUNCTION_LIMIT);
+
+  // No conjunctions -> skip the Claude call entirely.
+  if (cdms.length === 0) {
+    const payload: ConjunctionPayload = { count: 0, alerts: [] };
+    setCached(payload);
+    return payload;
+  }
+
+  // One batched AI call for all events.
+  const summaries = await summarize(cdms);
+
+  // Merge AI summary with factual CDM fields, preserving TCA order.
+  const alerts: ConjunctionAlert[] = cdms.map((c) => {
+    const ai = summaries.get(c.CDM_ID);
+    return {
+      cdmId: c.CDM_ID,
+      sat1Name: c.SAT_1_NAME,
+      sat1Id: c.SAT_1_ID,
+      sat2Name: c.SAT_2_NAME,
+      sat2Id: c.SAT_2_ID,
+      tca: c.TCA,
+      // MIN_RNG is METRES in cdm_public; the feed contract is km.
+      missDistanceKm: formatCdmMissKm(c.MIN_RNG),
+      probability: c.PC,
+      plainEnglish:
+        ai?.plainEnglish ??
+        `Close approach between ${c.SAT_1_NAME} and ${c.SAT_2_NAME}.`,
+      recommendation: ai?.recommendation ?? "Monitor — awaiting AI assessment.",
+      urgency: ai?.urgency ?? "LOW",
+    };
+  });
+
+  const payload: ConjunctionPayload = { count: alerts.length, alerts };
+  setCached(payload);
+  return payload;
+}
+
 export async function GET(): Promise<NextResponse> {
   const cached = getCached();
   if (cached) {
@@ -93,42 +144,12 @@ export async function GET(): Promise<NextResponse> {
   }
 
   try {
-    const cdms = await fetchConjunctions(CONJUNCTION_LIMIT);
-
-    // No conjunctions -> skip the Claude call entirely.
-    if (cdms.length === 0) {
-      const payload = { count: 0, alerts: [] as ConjunctionAlert[] };
-      setCached(payload);
-      return NextResponse.json(payload);
+    if (!inFlight) {
+      inFlight = buildAlerts().finally(() => {
+        inFlight = null;
+      });
     }
-
-    // One batched AI call for all events.
-    const summaries = await summarize(cdms);
-
-    // Merge AI summary with factual CDM fields, preserving TCA order.
-    const alerts: ConjunctionAlert[] = cdms.map((c) => {
-      const ai = summaries.get(c.CDM_ID);
-      return {
-        cdmId: c.CDM_ID,
-        sat1Name: c.SAT_1_NAME,
-        sat1Id: c.SAT_1_ID,
-        sat2Name: c.SAT_2_NAME,
-        sat2Id: c.SAT_2_ID,
-        tca: c.TCA,
-        // MIN_RNG is METRES in cdm_public; the feed contract is km.
-        missDistanceKm: formatCdmMissKm(c.MIN_RNG),
-        probability: c.PC,
-        plainEnglish:
-          ai?.plainEnglish ??
-          `Close approach between ${c.SAT_1_NAME} and ${c.SAT_2_NAME}.`,
-        recommendation: ai?.recommendation ?? "Monitor — awaiting AI assessment.",
-        urgency: ai?.urgency ?? "LOW",
-      };
-    });
-
-    const payload = { count: alerts.length, alerts };
-    setCached(payload);
-    return NextResponse.json(payload);
+    return NextResponse.json(await inFlight);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     console.error("[/api/conjunctions] error:", message);

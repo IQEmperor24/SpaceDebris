@@ -18,7 +18,7 @@ import {
 } from "@/lib/orbital";
 
 /* ============================================================
-   SpaceDebris — Autonomous Avoidance Planner core (Session 6)
+   SpaceDebris — Avoidance Burn Planner core (Session 6)
 
    PURE FUNCTIONS ONLY: no React, no network, no Anthropic. Runs
    in the browser (components/AvoidancePlanner.tsx) and under
@@ -54,7 +54,8 @@ import {
    when the caller passes the time remaining until TCA, must not
    START in the past (lead + burn/2 ≤ time remaining).
    Decision rule (Starlink-style, public): a maneuver is required
-   when the baseline Pc ≥ STARLINK_PC_MANEUVER_THRESHOLD (1e-5).
+   when the baseline Pc ≥ STARLINK_PC_MANEUVER_THRESHOLD (3e-7, SpaceX's
+   July 2026 FCC report) — or the caller's own thresholdPc.
    Candidates are the feasible cells whose CW Pc is below the
    threshold AND whose miss distance grows, walked in preference
    order: smallest Δv, then the LONGEST lead (earliest burn — most
@@ -279,7 +280,7 @@ export interface PlanAvoidanceInput {
   /** Combined hard-body radius (m). */
   hardBodyRadiusM: number;
   vehicle: VehiclePreset;
-  /** Default STARLINK_PC_MANEUVER_THRESHOLD (1e-5). */
+  /** Default STARLINK_PC_MANEUVER_THRESHOLD (3e-7). */
   thresholdPc?: number;
   /** Burn leads before TCA (s). */
   leads?: number[];

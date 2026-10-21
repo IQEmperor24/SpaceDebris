@@ -18,8 +18,8 @@ SpaceDebris pulls a live sample of the public satellite catalog and conjunction 
 
 1. **3D orbital map** (top left): click **600×** in the bottom-left time-warp control. Every debris dot is re-propagated with SGP4 at the simulated time; a LEO orbit sweeps past in about nine seconds. **LIVE** snaps back to now.
 2. **ISS TOPO console**: live ISS state vector, ground track, and the next pass over NASA JSC in Houston (AOS, max elevation, LOS).
-3. **Conjunction screener**: enter **ISS**, keep the 24 h window and press **RUN SCREEN**. You get every close approach within 50 km with TCA, miss distance, the RIC (radial / in-track / cross-track) separation, relative speed, probability of collision and the NASA ISS keep-out-box test. Then press **AI conjunction assessment** for a CARA-style memo with a GREEN / YELLOW / RED disposition.
-4. **Avoidance planner**: take a screened close approach and see the burn trade space (lead time × Δv × prograde / retrograde), the recommended minimum-Δv burn that clears Pc 1e-5, its propellant and burn time.
+3. **Conjunction screener**: enter **ISS**, keep the 24 h window and press **RUN SCREEN**. You get the closest approaches within 50 km (up to 15, closest first) with TCA, miss distance, the RIC (radial / in-track / cross-track) separation, relative speed, probability of collision and the NASA ISS keep-out-box test. Then press **AI conjunction assessment** for a CARA-style memo with a GREEN / YELLOW / RED disposition.
+4. **Avoidance planner**: take a screened close approach and see the burn trade space (lead time × Δv × prograde / retrograde), the recommended minimum-Δv burn that clears the decision threshold (Starlink's Pc 3e-7; NASA's 1e-4 red line when the target is the ISS), its propellant and burn time.
 5. **Launch COLA**: pick a pad (SLC-40, LC-39A, SLC-4E, Starbase), a target orbit and a window. Every launch minute is graded GO / CAUTION / NO-GO and the next clear window is reported.
 6. **Disposal compliance**: choose the Starlink-class preset at 550 km and compare solar-activity levels against the FCC 5-year line.
 7. **System telemetry** (bottom of the page): watch the Space-Track request budget and the propagation tick percentiles, then run the in-browser SGP4 benchmark.
@@ -40,11 +40,11 @@ flowchart LR
   end
   subgraph server["Route handlers (Node runtime)"]
     routes["/api/* : validate input, TTL cache, compute budget"]
+    stclient["lib/spacetrack.ts: one login, shared dataset cache, 15 s timeout"]
   end
   subgraph libs["Pure TypeScript libs (shared by server and browser)"]
     orbital["lib/orbital.ts: SGP4, frames, Pc, two-body"]
     algos["screening, maneuver, launch, lifetime, iss, starlink, density, fragmentation"]
-    stclient["lib/spacetrack.ts: one login, shared dataset cache, 15 s timeout"]
   end
   st[("Space-Track.org")]
   swpc[("NOAA SWPC")]
@@ -60,8 +60,8 @@ flowchart LR
 
 - **Pure libraries first.** All physics lives in side-effect-free modules under `lib/` (no React, no fetch), so the same code runs in route handlers, in the browser, and in the test suite.
 - **Route handlers** validate and bound every input, keep a per-instance TTL cache, run compute-heavy work under a time budget (returning `truncated: true` rather than timing out), and never return an unhandled error.
-- **Space-Track hygiene.** Concurrent cold requests share a single login and a single in-flight download per dataset (gp sample: 10 min; public CDMs: one pull of 100 rows, 60 s), with a 15 s timeout on every call. Every request is counted against the published 30/min and 300/hr limits and reported live by `/api/health`.
-- **Edge middleware** rate-limits `/api/*` per client IP and adds CORS headers to read-only responses.
+- **Space-Track hygiene.** Concurrent cold requests share a single login and a single in-flight download per dataset (gp sample: 10 min; public CDMs: one pull of 100 rows, 60 s), with a 15 s timeout on every call. Every request is counted (per serverless instance, so a lower bound when several instances are warm) against the published 30/min and 300/hr limits and reported by `/api/health`.
+- **Edge middleware** rate-limits `/api/*` per client IP in two tiers (general, plus a stricter bucket for Claude-backed and compute-heavy calls) and adds CORS headers to read-only responses.
 
 ## Features
 
@@ -85,12 +85,12 @@ flowchart LR
 ### Operations layer
 
 - **Starlink constellation monitor**: the public FCC shell table (Gen1 550/53°, 540/53.2°, 570/70°, 560/97.6°; Gen2 525/53°, 530/43°, 535/33°). Each Starlink object in the sample is classified as on-station, orbit raising/lowering, deorbiting or unassigned, and the panel counts the non-Starlink objects whose altitude range crosses each shell.
-- **Autonomous avoidance planner**: Clohessy-Wiltshire (Hill) relative motion gives the displacement at TCA for an in-track burn applied τ before it. The planner sweeps burn lead × Δv × direction, recomputes the miss and Pc, and recommends the smallest Δv that brings Pc below 1e-5. It reports propellant and burn time for public-estimate vehicle presets, a Pc-versus-covariance sensitivity curve, and a flag when the encounter sits in the dilution region.
+- **Avoidance burn planner**: Clohessy-Wiltshire (Hill) relative motion gives the displacement at TCA for an in-track burn applied τ before it. The planner sweeps burn lead × Δv × direction, recomputes the miss and Pc, and recommends the smallest Δv that brings Pc below the decision threshold (Starlink's published 3e-7 trigger, or NASA's 1e-4 red line for the ISS). It reports propellant and burn time for public-estimate vehicle presets, a Pc-versus-covariance sensitivity curve, and a flag when the encounter sits in the dilution region.
 - **Launch COLA screening**: for every launch minute in a 60, 120 or 240 minute window, the vehicle is inserted into the target plane through the pad, coasts on two-body motion and is screened against the catalog sample. NO-GO below 5 km, CAUTION below 25 km.
 - **Orbital lifetime and FCC 5-year disposal check**: exponential-atmosphere drag decay integrated to 120 km for ballistic-coefficient presets and three solar-activity levels, checked against the FCC 5-year rule (2022) and the legacy 25-year guideline.
 - **Public API**: an OpenAPI 3.1 document and a `/docs` page generated from one source file, a token-bucket rate limit, and CORS for read-only endpoints.
 - **Engineering rigor**: an in-repo test suite, GitHub Actions CI and this README.
-- **System telemetry**: Space-Track request budget, orbit-propagation tick p50/p95 and frame budget, per-route API latency, and an on-demand in-browser SGP4 benchmark.
+- **System telemetry**: Space-Track request budget, orbit-propagation tick p50/p95 and frame budget, per-route API latency for the instrumented routes, and an on-demand in-browser SGP4 benchmark.
 
 ## How a conjunction screen works
 
@@ -113,8 +113,8 @@ Each model is first-principles and deliberately simple. The caveats below are al
 | **SGP4 / TLE** | `satellite.js` SGP4 on public two-line element sets, in the TEME frame. | TLEs are mean elements with no published covariance. Position error is of order a kilometre near epoch and grows with propagation time. The dashboard uses a sample of about 2,000 newest-epoch element sets, not the full catalog. |
 | **RIC frame** | Radial (r̂), in-track (ĥ × r̂) and cross-track (ĥ = r × v normalised), right-handed, centred on the target. | Defined from the target's osculating state at TCA. |
 | **Probability of collision** | 2-D encounter-plane integral of the combined position covariance over a hard-body disc (short-encounter, linear relative motion). | The covariance is assumed, not measured: σ = 0.3 / 1.0 / 0.3 km (R / I / C) per object, combined hard-body radius 20 m. Real conjunction assessment uses the covariance delivered with each CDM. Tests check the integral against closed-form isotropic and anisotropic results. |
-| **Severity and ISS rules** | CRITICAL at Pc ≥ 1e-4 or miss < 1 km; HIGH at Pc ≥ 1e-5 or inside the ISS keep-out box (±2 km R × ±25 km I × ±25 km C); MEDIUM below 10 km. | Pc 1e-4 / 1e-5 and the ±2 × 25 × 25 km keep-out box are public NASA / SpaceX figures; the 1 km and 10 km miss-distance tiers are this dashboard's own screening choices. All are applied here to TLE-derived numbers. |
-| **Avoidance burns (CW)** | Hill / Clohessy-Wiltshire equations, linearised about a circular reference orbit; finite burns are modelled by superposition. The Pc 1e-5 decision threshold matches SpaceX's public statements for Starlink. | The linearisation is checked live against two-body propagation (universal variables, Vallado Algorithm 8) and must agree within 2 %. J2, drag and SGP4-versus-two-body differences are ignored. Vehicle masses, Isp and thrust are public estimates. |
+| **Severity and ISS rules** | CRITICAL at Pc ≥ 1e-4 or miss < 1 km; HIGH at Pc ≥ 1e-5 or inside the ISS keep-out box (±2 km R × ±25 km I × ±25 km C); MEDIUM below 10 km. | Pc 1e-4 / 1e-5 (NASA's RED / YELLOW ISS thresholds) and the ±2 × 25 × 25 km keep-out box are public NASA figures; the 1 km and 10 km miss-distance tiers are this dashboard's own screening choices. All are applied here to TLE-derived numbers. |
+| **Avoidance burns (CW)** | Hill / Clohessy-Wiltshire equations, linearised about a circular reference orbit; finite burns are modelled by superposition. The Pc 3e-7 decision threshold is SpaceX's published Starlink trigger (semiannual FCC report, July 2026; earlier filings said 1e-5). | CW is checked live against two-body propagation (universal variables, Vallado Algorithm 8) in the encounter plane; above 2 % error (or e > 0.005) the heat map is flagged indicative only, and every recommended burn is re-solved on two-body arcs with no linearisation before it is shown. J2, drag and SGP4-versus-two-body differences are ignored. Vehicle masses, Isp and thrust are public estimates. |
 | **Orbital lifetime** | Circular-orbit decay da/dt = −√(μa)·ρ·B with the Vallado exponential atmosphere (Table 8-4) scaled by solar activity (0.5 / 1 / 2.5), integrated adaptively. | There is no solar cycle, attitude or eccentricity modelling. Anchor: a Starlink-class B of 0.04 m²/kg at 550 km decays in about 2.9 years at mean activity (about 1.2 y at high, 5.8 y at low), the same order as the commonly quoted figure of about five years. |
 | **Launch COLA** | Insertion at T+9 min, 20° downrange in the plane through the pad, then a 20 min two-body coast screened every 30 s with refinement. | Much simpler than a real COLA: no ascent trajectory, no dispersions or covariance, and only the catalog sample. |
 | **Reentry watch** | First-order decay from the TLE mean-motion derivative: da/dt = −(2/3)·a·(ṅ/n). | Optimistic, because real decay accelerates as perigee drops. |
@@ -148,7 +148,7 @@ curl -s "https://space-debris-two.vercel.app/api/cola?site=slc-40&orbit=starlink
 curl -s "https://space-debris-two.vercel.app/api/health"
 ```
 
-- **Rate limit:** 120-request burst, refilled at 2 per second (120 per minute sustained), per client IP. Responses carry `X-RateLimit-Limit` and `X-RateLimit-Remaining`; over the limit you get `429` with `Retry-After`. The limit is enforced per Edge instance, so it is best-effort rather than a global guarantee.
+- **Rate limit:** two token buckets per client IP (IPv6: per /64). Every `/api/*` request spends from the general bucket (120-request burst, refilled at 2 per second = 120 per minute sustained). Expensive requests (every Claude-backed `POST`, `GET /api/screen`, `GET /api/cola`, and `/api/debris` with `search` or a `limit` other than 500 or 2000) must also pass a stricter bucket (20-request burst, 10 per minute sustained). Responses carry `X-RateLimit-Limit` and `X-RateLimit-Remaining` for the bucket that applies, plus `X-RateLimit-Tier`; over the limit you get `429` with `Retry-After`. Both are enforced per Edge instance, so best-effort rather than a global guarantee.
 - **CORS:** `GET` endpoints allow any origin. The Claude-backed `POST` endpoints do not send CORS headers.
 - **Caching:** every data route except `POST /api/analyze` keeps a per-instance cache (60 s to 15 min depending on the source), so repeated calls do not hit Space-Track, NOAA or Claude again; `/api/analyze` spends tokens on every call. The cache for each route is listed on [/docs](https://space-debris-two.vercel.app/docs).
 
@@ -172,7 +172,7 @@ curl -s "https://space-debris-two.vercel.app/api/health"
   - a 24 h screen of 2,000 objects;
   - a 120-minute COLA window against 2,000 in-band objects;
   - a full avoidance trade space.
-- **Observability.** `/api/health` reports Space-Track usage against its limits on every response, and the System Telemetry panel shows propagation tick percentiles and per-route latency measured in the browser.
+- **Observability.** `/api/health` reports Space-Track usage against its limits on every response, and the System Telemetry panel shows propagation tick percentiles and per-route latency for the instrumented routes, measured in the browser.
 
 ### Test-suite map
 

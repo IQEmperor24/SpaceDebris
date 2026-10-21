@@ -29,7 +29,8 @@ import {
                   X-RateLimit-* of the bucket that denied it
       The dashboard itself makes ~20 requests/min per viewer, and
       every expensive call it makes is a human click or one call per
-      page load, so a real viewer never hits either limit. Client
+      page load, so one viewer at a normal pace stays under both limits
+      (clients behind one NAT share the buckets). Client
       key = first entry of x-forwarded-for, else x-real-ip, else
       "anonymous" (on Vercel the platform sets these headers itself);
       IPv6 clients are keyed by their /64.

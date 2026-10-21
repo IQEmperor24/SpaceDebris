@@ -12,6 +12,7 @@ import {
 } from "react";
 import type { ScreeningCloseApproach, ScreeningResult } from "@/lib/prompts";
 import {
+  ISS_NORAD_ID,
   ISS_PC_RED_THRESHOLD,
   STARLINK_PC_MANEUVER_THRESHOLD,
   formatDuration,
@@ -45,14 +46,15 @@ import {
 import { timedFetch } from "@/lib/telemetry";
 
 /* ============================================================
-   Session 6 — Feature 2: Autonomous Avoidance Planner
+   Session 6 — Feature 2: Avoidance Burn Planner
 
    The decision core of an autonomous collision-avoidance system,
    built deterministically on top of the SGP4 conjunction screen:
    evaluate a trade space of single in-track burns with linearised
    (Clohessy-Wiltshire) relative motion, re-evaluate Pc for each,
    and pick the minimum-Δv burn that clears a Starlink-style
-   decision rule (maneuver when Pc ≥ 1e-5). The burn is recommended
+   decision rule (maneuver when Pc ≥ 3e-7; NASA's 1e-4 red line when the
+   screened target is the ISS). The burn is recommended
    only once a two-body re-solve with no linearisation confirms it.
    The linearisation is also checked live for this geometry, and the
    panel says "verified" only when it holds.
@@ -63,8 +65,10 @@ import { timedFetch } from "@/lib/telemetry";
      Screener already ran the same target + window). Every close
      approach now carries both ECI states at TCA (targetStateEci /
      secondaryStateEci, filled by lib/screening).
-   - The event picker lists the 5 closest approaches; the default
-     selection is the highest-Pc one (ties → closest).
+   - The event picker lists the 5 highest-Pc approaches (ties → closest):
+     Pc is what the decision rule uses, and under the anisotropic
+     covariance it does not fall monotonically with miss distance. The
+     default selection is the highest-Pc one.
    - Everything else is computed in the browser by lib/maneuver
      (pure):
      - evaluateTradeGrid: 8 leads × 7 Δv × 2 directions = 112 CW cells,
@@ -628,12 +632,14 @@ export default function AvoidancePlanner() {
     setRun((prev) => ({ target, hours, nonce: (prev?.nonce ?? 0) + 1 }));
   }
 
-  /* ---- Events: 5 closest approaches ---- */
+  /* ---- Events: the 5 highest-Pc approaches (ties → closest) ---- */
   const events = useMemo<ScreeningCloseApproach[]>(() => {
     if (!result) return [];
+    const pcOf = (e: ScreeningCloseApproach): number =>
+      isFiniteNumber(e.probabilityOfCollision) ? e.probabilityOfCollision : 0;
     return result.closeApproaches
       .filter((e) => e && typeof e === "object" && isFiniteNumber(e.missDistanceKm))
-      .sort((a, b) => a.missDistanceKm - b.missDistanceKm)
+      .sort((a, b) => pcOf(b) - pcOf(a) || a.missDistanceKm - b.missDistanceKm)
       .slice(0, MAX_EVENTS);
   }, [result]);
 
@@ -674,6 +680,11 @@ export default function AvoidancePlanner() {
   const availableSeconds = secondsToTca !== null && secondsToTca > 0 ? secondsToTca : null;
   const clockReady = nowMs !== null;
 
+  /* ---- Decision rule: NASA's ISS red line for the ISS, Starlink's trigger otherwise ---- */
+  const isIssTarget = result?.target?.noradId === ISS_NORAD_ID;
+  const thresholdPc = isIssTarget ? ISS_PC_RED_THRESHOLD : STARLINK_PC_MANEUVER_THRESHOLD;
+  const ruleLabel = isIssTarget ? "NASA ISS red line" : "Starlink";
+
   /* ---- Trade space: expensive CW grid (per event / vehicle / covariance) ---- */
   const gridState = useMemo<GridState>(() => {
     if (!states) return { grid: null, error: null };
@@ -684,13 +695,13 @@ export default function AvoidancePlanner() {
         sigmaRicKm: sigma,
         hardBodyRadiusM: hbrM,
         vehicle,
-        thresholdPc: STARLINK_PC_MANEUVER_THRESHOLD,
+        thresholdPc,
       });
       return { grid, error: null };
     } catch (err) {
       return { grid: null, error: err instanceof Error ? err.message : "Planning failed." };
     }
-  }, [states, sigma, hbrM, vehicle]);
+  }, [states, sigma, hbrM, vehicle, thresholdPc]);
   const grid = gridState.grid;
 
   /* ---- ...then the cheap, time-dependent part (every clock tick) ---- */
@@ -758,7 +769,9 @@ export default function AvoidancePlanner() {
   const reportKm = isFiniteNumber(result?.assumptions?.reportThresholdKm)
     ? result.assumptions.reportThresholdKm
     : DEFAULT_SCREENING_OPTIONS.reportThresholdKm;
-  const thresholdLabel = fmtPc(STARLINK_PC_MANEUVER_THRESHOLD, 0);
+  const thresholdLabel = fmtPc(thresholdPc, 0);
+  /** Below NASA's red line an amber band exists between the two thresholds. */
+  const amberBand = thresholdPc < ISS_PC_RED_THRESHOLD;
   const earliestLead = Math.max(...DEFAULT_LEADS_SECONDS);
 
   return (
@@ -766,10 +779,10 @@ export default function AvoidancePlanner() {
       {/* Header */}
       <div className="flex h-9 items-center justify-between border-b border-glass px-3">
         <h2 className="font-mono text-[0.7rem] font-semibold uppercase tracking-widest text-text-secondary">
-          AUTONOMOUS AVOIDANCE PLANNER
+          AVOIDANCE BURN PLANNER
         </h2>
         <span className="hidden truncate pl-2 font-mono text-[0.65rem] text-text-muted sm:inline">
-          decision rule: maneuver when Pc ≥ {thresholdLabel} (Starlink)
+          decision rule: maneuver when Pc ≥ {thresholdLabel} ({ruleLabel})
         </span>
       </div>
 
@@ -847,7 +860,7 @@ export default function AvoidancePlanner() {
           <div className="mt-3 font-mono text-xs text-text-muted">
             RUN screens the target with SGP4 (served from the screener&apos;s 5-min cache when the
             same target and window already ran), then plans a single avoidance burn for any of the
-            5 closest approaches.
+            5 highest-Pc approaches.
           </div>
         )}
 
@@ -857,6 +870,30 @@ export default function AvoidancePlanner() {
               <div className="rounded-md border border-caution/40 bg-caution/10 px-3 py-2 font-mono text-xs text-caution">
                 Screen hit its compute budget — only {fmtFixed(result.candidatesScreened, 0)} candidates
                 were screened; rerun with a shorter window for full coverage.
+              </div>
+            )}
+
+            {/* The vehicle presets are Starlink-class, and so is the default rule.
+                Say so when the screened target is something else, so this panel is
+                never read as a go/no-go call with the wrong rule or the wrong mass. */}
+            {result.target && events.length > 0 && !/STARLINK/i.test(result.target.name) && (
+              <div
+                className="rounded-md border border-glass bg-white/5 px-3 py-2 font-mono text-xs text-text-muted"
+                data-testid="avoid-illustration-note"
+              >
+                {isIssTarget ? (
+                  <>
+                    NASA&apos;s ISS rule decides here (maneuver at Pc ≥ {thresholdLabel}, RED in the ISS
+                    console above). The propellant and burn-time columns are for the selected
+                    Starlink-class preset, not the ~420 t ISS.
+                  </>
+                ) : (
+                  <>
+                    Starlink&apos;s decision rule (Pc ≥ {thresholdLabel}) and vehicle presets are applied
+                    to <span className="text-text-secondary">{result.target.name}</span> for illustration
+                    only.
+                  </>
+                )}
               </div>
             )}
 
@@ -870,7 +907,7 @@ export default function AvoidancePlanner() {
                 {/* ---- Event picker ---- */}
                 <div>
                   <Label>
-                    Close approach ({result.target?.name || run?.target || "target"} · {events.length} closest)
+                    Close approach ({result.target?.name || run?.target || "target"} · top {events.length} by Pc)
                   </Label>
                   <select
                     data-testid="avoid-event"
@@ -1148,7 +1185,9 @@ export default function AvoidancePlanner() {
 
                       <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[0.6rem] text-text-muted">
                         <Swatch color={BG_RED} label={`Pc ≥ ${fmtPc(ISS_PC_RED_THRESHOLD, 0)}`} />
-                        <Swatch color={BG_AMBER} label={`${thresholdLabel} ≤ Pc < ${fmtPc(ISS_PC_RED_THRESHOLD, 0)}`} />
+                        {amberBand && (
+                          <Swatch color={BG_AMBER} label={`${thresholdLabel} ≤ Pc < ${fmtPc(ISS_PC_RED_THRESHOLD, 0)}`} />
+                        )}
                         <Swatch color={BG_GREEN} label={`Pc < ${thresholdLabel}`} />
                         <span className="flex items-center gap-1">
                           <span
@@ -1304,7 +1343,7 @@ function LeadRow({
             onFocus={(e) => onShow(c, e)}
             onMouseLeave={onHide}
             onBlur={onHide}
-            className="rounded-sm py-1.5 text-center font-mono text-[0.6rem] text-text-primary focus:outline-none"
+            className="rounded-sm py-1.5 text-center font-mono text-[0.6rem] text-text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-text-primary"
             style={{
               backgroundColor: cellBackground(c.pc, thresholdPc),
               backgroundImage: c.feasible ? undefined : HATCH,
