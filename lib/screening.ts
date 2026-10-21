@@ -78,7 +78,9 @@ import {
       TCA, miss, relative velocity, RIC components, target altitude,
       Pc, keep-out-box penetration (NASA ISS "pizza box"), object
       class and a severity grade; sorted by miss ascending and
-      capped at maxResults.
+      capped at maxResults. Session 6: each row also carries both
+      ECI states at TCA (targetStateEci / secondaryStateEci) so the
+      avoidance planner can re-evaluate Pc after a hypothetical burn.
 
    Severity grades (screener-side, deterministic)
    - CRITICAL: Pc ≥ 1e-4 (NASA ISS RED threshold) or miss < 1 km
@@ -195,6 +197,17 @@ function distance(a: Vec3, b: Vec3): number {
 function escapeSpeedKmS(radiusKm: number): number {
   const r = Math.max(radiusKm, EARTH_EQUATORIAL_RADIUS_KM);
   return Math.sqrt((2 * MU_EARTH_KM3_S2) / r);
+}
+
+/** Detached copy of a state vector (positions km, velocities km/s). */
+function copyState(sv: StateVector): {
+  position: [number, number, number];
+  velocity: [number, number, number];
+} {
+  return {
+    position: [sv.position[0], sv.position[1], sv.position[2]],
+    velocity: [sv.velocity[0], sv.velocity[1], sv.velocity[2]],
+  };
 }
 
 function finiteOr(value: number, fallback: number): number {
@@ -590,6 +603,10 @@ export function screenTarget(
       probabilityOfCollision: pc,
       insideKeepOutBox,
       severity: gradeSeverity(pc, best.missKm, insideKeepOutBox),
+      // Session 6 — both ECI (TEME) states at TCA, copied from the refined
+      // golden-section evaluation, for the Autonomous Avoidance Planner.
+      targetStateEci: copyState(best.target),
+      secondaryStateEci: copyState(best.secondary),
     });
   }
 
