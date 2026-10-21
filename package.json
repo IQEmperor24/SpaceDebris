@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "node --experimental-strip-types --import ./tests/register.mjs --test tests/*.test.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.24.0",
