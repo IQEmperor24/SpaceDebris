@@ -27,6 +27,9 @@
     },
     "app/api/fleet/route.ts": {
       "maxDuration": 30
+    },
+    "app/api/cola/route.ts": {
+      "maxDuration": 30
     }
   }
 }

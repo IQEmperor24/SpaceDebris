@@ -17,6 +17,7 @@ import {
   type SpaceTrackTLE,
   type SpaceTrackCDM,
 } from "@/lib/spacetrack";
+import { cdmMissDistanceKm, formatCdmMissKm } from "@/lib/orbital";
 
 /* ============================================================
    GET /api/fleet
@@ -79,25 +80,31 @@ function setCached(data: FleetIntelligence): void {
   });
 }
 
-/** Composite severity score — higher = worse. Used to rank top CDMs. */
-function cdmSeverityScore(c: SpaceTrackCDM): number {
-  const miss = parseFloat(c.MIN_RNG);
+/**
+ * Ranking for the Top Threats list: probability of collision decides,
+ * miss distance only breaks ties. (A composite 10/miss + 1000·Pc score
+ * used to live here; once MIN_RNG was read correctly in km the miss term
+ * dominated and a 150 m / Pc 2e-6 event outranked a 600 m / Pc 5e-4 one.)
+ */
+function cdmPcKey(c: SpaceTrackCDM): number {
   const pc = parseFloat(c.PC);
-  const missTerm =
-    Number.isFinite(miss) && miss > 0 ? 10 / miss : 0; // closer = bigger score
-  const pcTerm = Number.isFinite(pc) ? pc * 1000 : 0;
-  return missTerm + pcTerm;
+  return Number.isFinite(pc) && pc > 0 ? Math.log10(pc) : -99;
+}
+
+function cdmMissKey(c: SpaceTrackCDM): number {
+  return cdmMissDistanceKm(c.MIN_RNG) ?? Number.POSITIVE_INFINITY;
 }
 
 /**
  * Industry-standard heuristic threat class for a single CDM.
  * - CRITICAL: PC >= 1e-3 OR miss < 0.1 km  (red-line, immediate action)
- * - HIGH:     PC >= 1e-4 OR miss < 1 km    (above SpaceX's 3e-7 maneuver threshold)
+ * - HIGH:     PC >= 1e-4 OR miss < 1 km    (SpaceX maneuvers Starlink at Pc >= 1e-5 — STARLINK_PC_MANEUVER_THRESHOLD in lib/orbital)
  * - MEDIUM:   PC >= 1e-5 OR miss < 5 km
  * - LOW:      everything else
  */
 function classifyCDM(c: SpaceTrackCDM): ThreatLevel {
-  const miss = parseFloat(c.MIN_RNG);
+  const missRaw = cdmMissDistanceKm(c.MIN_RNG); // km (MIN_RNG is metres)
+  const miss = missRaw === null ? NaN : missRaw;
   const pc = parseFloat(c.PC);
   const missValid = Number.isFinite(miss);
   const pcValid = Number.isFinite(pc);
@@ -203,6 +210,130 @@ function safeRecommendedActions(v: unknown): string[] {
     .slice(0, RECOMMENDED_ACTION_COUNT);
 }
 
+/** The 502 path: Claude answered, but not with the JSON contract. */
+class FleetBriefParseError extends Error {
+  readonly detail: string;
+  constructor(detail: string) {
+    super("AI returned an unparseable fleet brief.");
+    this.name = "FleetBriefParseError";
+    this.detail = detail;
+  }
+}
+
+/**
+ * One in-flight build per instance: concurrent cold GETs (or a burst
+ * right after the 2-min cache expires) share ONE Claude call instead of
+ * each spending ~$0.012. Cleared when the build settles.
+ */
+let inFlight: Promise<FleetIntelligence> | null = null;
+
+async function buildFleet(): Promise<FleetIntelligence> {
+  // ---- 1. Pull both data sources concurrently ----
+  const [tles, cdms] = await Promise.all([
+    fetchTLEs(DEBRIS_SAMPLE),
+    fetchConjunctions(CDM_LIMIT),
+  ]);
+
+  // ---- 2. Aggregate deterministic stats ----
+  const totalObjects = tles.length;
+  const shellCounts = bucketByShell(tles);
+
+  const sortedCDMs = [...cdms].sort(
+    (a, b) => cdmPcKey(b) - cdmPcKey(a) || cdmMissKey(a) - cdmMissKey(b)
+  );
+
+  let highPriorityCount = 0;
+  let criticalCount = 0;
+  for (const c of cdms) {
+    const cls = classifyCDM(c);
+    if (cls === "CRITICAL") criticalCount++;
+    else if (cls === "HIGH") highPriorityCount++;
+  }
+
+  const topCDMs = sortedCDMs.slice(0, TOP_THREAT_COUNT);
+
+  // ---- 3. Build Claude prompt input ----
+  const stats: FleetStatsForPrompt = {
+    totalObjects,
+    activeConjunctions: cdms.length,
+    highPriorityCount,
+    criticalCount,
+    shellCounts,
+    topCDMs: topCDMs.map((c) => ({
+      pair: `${c.SAT_1_NAME} ↔ ${c.SAT_2_NAME}`,
+      tca: c.TCA,
+      missKm: formatCdmMissKm(c.MIN_RNG),
+      pc: c.PC,
+    })),
+  };
+
+  // ---- 4. Claude intelligence brief ----
+  const client = getAnthropic();
+  const message = await client.messages.create({
+    model: CLAUDE_MODEL,
+    max_tokens: FLEET_MAX_TOKENS,
+    temperature: DEFAULT_TEMPERATURE,
+    system: FLEET_INTELLIGENCE_PROMPT,
+    messages: [{ role: "user", content: buildFleetUserPrompt(stats) }],
+  });
+
+  const textBlock = message.content.find((b) => b.type === "text");
+  const rawText =
+    textBlock && textBlock.type === "text" ? textBlock.text : "";
+
+  let ai: FleetAIAnalysis;
+  try {
+    const parsed = parseJsonObject(rawText) as Partial<FleetAIAnalysis> & {
+      shells?: Partial<FleetAIAnalysis["shells"]>;
+    };
+    ai = {
+      shells: {
+        leo: safeShell(parsed.shells?.leo),
+        meo: safeShell(parsed.shells?.meo),
+        geo: safeShell(parsed.shells?.geo),
+      },
+      executiveBrief:
+        typeof parsed.executiveBrief === "string"
+          ? parsed.executiveBrief
+          : "Brief unavailable.",
+      riskTrend: safeTrend(parsed.riskTrend),
+      topThreats: safeTopThreats(parsed.topThreats),
+      recommendedActions: safeRecommendedActions(parsed.recommendedActions),
+    };
+  } catch (parseErr) {
+    const detail =
+      parseErr instanceof Error ? parseErr.message : "Unknown parse error";
+    console.error(
+      "[/api/fleet] JSON parse failed:",
+      detail,
+      "raw:",
+      rawText
+    );
+    throw new FleetBriefParseError(detail);
+  }
+
+  // ---- 5. Merge facts + interpretation ----
+  const result: FleetIntelligence = {
+    generatedAt: new Date().toISOString(),
+    totalObjects,
+    activeConjunctions: cdms.length,
+    highPriorityCount,
+    criticalCount,
+    shells: {
+      leo: { count: shellCounts.leo, status: ai.shells.leo },
+      meo: { count: shellCounts.meo, status: ai.shells.meo },
+      geo: { count: shellCounts.geo, status: ai.shells.geo },
+    },
+    executiveBrief: ai.executiveBrief,
+    riskTrend: ai.riskTrend,
+    topThreats: ai.topThreats,
+    recommendedActions: ai.recommendedActions,
+  };
+
+  setCached(result);
+  return result;
+}
+
 export async function GET(): Promise<NextResponse> {
   const cached = getCached();
   if (cached) {
@@ -210,114 +341,16 @@ export async function GET(): Promise<NextResponse> {
   }
 
   try {
-    // ---- 1. Pull both data sources concurrently ----
-    const [tles, cdms] = await Promise.all([
-      fetchTLEs(DEBRIS_SAMPLE),
-      fetchConjunctions(CDM_LIMIT),
-    ]);
-
-    // ---- 2. Aggregate deterministic stats ----
-    const totalObjects = tles.length;
-    const shellCounts = bucketByShell(tles);
-
-    const sortedCDMs = [...cdms].sort(
-      (a, b) => cdmSeverityScore(b) - cdmSeverityScore(a)
-    );
-
-    let highPriorityCount = 0;
-    let criticalCount = 0;
-    for (const c of cdms) {
-      const cls = classifyCDM(c);
-      if (cls === "CRITICAL") criticalCount++;
-      else if (cls === "HIGH") highPriorityCount++;
+    if (!inFlight) {
+      inFlight = buildFleet().finally(() => {
+        inFlight = null;
+      });
     }
-
-    const topCDMs = sortedCDMs.slice(0, TOP_THREAT_COUNT);
-
-    // ---- 3. Build Claude prompt input ----
-    const stats: FleetStatsForPrompt = {
-      totalObjects,
-      activeConjunctions: cdms.length,
-      highPriorityCount,
-      criticalCount,
-      shellCounts,
-      topCDMs: topCDMs.map((c) => ({
-        pair: `${c.SAT_1_NAME} ↔ ${c.SAT_2_NAME}`,
-        tca: c.TCA,
-        missKm: c.MIN_RNG,
-        pc: c.PC,
-      })),
-    };
-
-    // ---- 4. Claude intelligence brief ----
-    const client = getAnthropic();
-    const message = await client.messages.create({
-      model: CLAUDE_MODEL,
-      max_tokens: FLEET_MAX_TOKENS,
-      temperature: DEFAULT_TEMPERATURE,
-      system: FLEET_INTELLIGENCE_PROMPT,
-      messages: [{ role: "user", content: buildFleetUserPrompt(stats) }],
-    });
-
-    const textBlock = message.content.find((b) => b.type === "text");
-    const rawText =
-      textBlock && textBlock.type === "text" ? textBlock.text : "";
-
-    let ai: FleetAIAnalysis;
-    try {
-      const parsed = parseJsonObject(rawText) as Partial<FleetAIAnalysis> & {
-        shells?: Partial<FleetAIAnalysis["shells"]>;
-      };
-      ai = {
-        shells: {
-          leo: safeShell(parsed.shells?.leo),
-          meo: safeShell(parsed.shells?.meo),
-          geo: safeShell(parsed.shells?.geo),
-        },
-        executiveBrief:
-          typeof parsed.executiveBrief === "string"
-            ? parsed.executiveBrief
-            : "Brief unavailable.",
-        riskTrend: safeTrend(parsed.riskTrend),
-        topThreats: safeTopThreats(parsed.topThreats),
-        recommendedActions: safeRecommendedActions(parsed.recommendedActions),
-      };
-    } catch (parseErr) {
-      const detail =
-        parseErr instanceof Error ? parseErr.message : "Unknown parse error";
-      console.error(
-        "[/api/fleet] JSON parse failed:",
-        detail,
-        "raw:",
-        rawText
-      );
-      return NextResponse.json(
-        { error: "AI returned an unparseable fleet brief.", detail },
-        { status: 502 }
-      );
-    }
-
-    // ---- 5. Merge facts + interpretation ----
-    const result: FleetIntelligence = {
-      generatedAt: new Date().toISOString(),
-      totalObjects,
-      activeConjunctions: cdms.length,
-      highPriorityCount,
-      criticalCount,
-      shells: {
-        leo: { count: shellCounts.leo, status: ai.shells.leo },
-        meo: { count: shellCounts.meo, status: ai.shells.meo },
-        geo: { count: shellCounts.geo, status: ai.shells.geo },
-      },
-      executiveBrief: ai.executiveBrief,
-      riskTrend: ai.riskTrend,
-      topThreats: ai.topThreats,
-      recommendedActions: ai.recommendedActions,
-    };
-
-    setCached(result);
-    return NextResponse.json(result);
+    return NextResponse.json(await inFlight);
   } catch (err) {
+    if (err instanceof FleetBriefParseError) {
+      return NextResponse.json({ error: err.message, detail: err.detail }, { status: 502 });
+    }
     const detail = err instanceof Error ? err.message : "Unknown error";
     console.error("[/api/fleet] error:", detail);
     return NextResponse.json(

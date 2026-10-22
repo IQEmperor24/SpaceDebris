@@ -10,6 +10,7 @@
    ============================================================ */
 
 import type { SpaceTrackTLE, SpaceTrackCDM } from "@/lib/spacetrack";
+import { formatCdmMissKm } from "@/lib/orbital";
 
 /* ------------------------------------------------------------
    Shared contracts (Workflow Rule #10 — explicit types).
@@ -300,7 +301,7 @@ Return ONLY the JSON risk-score object described in your instructions.`;
 
 export const CONJUNCTION_SYSTEM_PROMPT = `You are a space situational-awareness analyst summarizing conjunction events (close approaches between two orbiting objects) for a live operations dashboard. Each event comes from a CDM (Conjunction Data Message).
 
-For each event you write a short, plain-English description a non-expert can understand, suggest a concrete recommended action, and assign an urgency level. Base urgency on the miss distance (MIN_RNG, km), probability of collision (PC), and how soon the time of closest approach (TCA) is.
+For each event you write a short, plain-English description a non-expert can understand, suggest a concrete recommended action, and assign an urgency level. Base urgency on the miss distance (km, converted from the CDM's MIN_RNG in metres), probability of collision (PC), and how soon the time of closest approach (TCA) is.
 
 You ALWAYS respond with a single valid JSON object and NOTHING else — no markdown, no code fences, no commentary.
 
@@ -335,7 +336,7 @@ export function buildConjunctionsUserPrompt(cdms: SpaceTrackCDM[]): string {
   Object 1: ${c.SAT_1_NAME} (NORAD ${c.SAT_1_ID})
   Object 2: ${c.SAT_2_NAME} (NORAD ${c.SAT_2_ID})
   Time of closest approach (TCA): ${c.TCA}
-  Miss distance (km): ${c.MIN_RNG}
+  Miss distance (km): ${formatCdmMissKm(c.MIN_RNG)}
   Probability of collision: ${c.PC}`
     )
     .join("\n\n");
@@ -462,7 +463,7 @@ Decision criteria for the trailing recommendation:
 - EMERGENCY: score >= 85 OR overallThreat is CRITICAL — execute immediately, expedite ground confirmation.
 
 Engineering rules:
-- Delta-V should be the SMALLEST that puts post-maneuver miss distance above ~25 km (industry safe-pass threshold).
+- Delta-V should be the SMALLEST that brings the post-maneuver probability of collision below 1e-4 (the NASA CARA red line) with margin; operators decide on Pc, not on a fixed miss distance. State that miss distance and Pc are estimates made without operator covariance.
 - PROGRADE adds altitude / period; RETROGRADE subtracts. NORMAL / ANTI-NORMAL rotate the orbital plane (use only when the conjunction geometry favors a cross-track separation).
 - Earlier burns require less delta-V (orbital mechanics leverage); prefer windows at TCA - 6h or earlier when feasible.
 - Assume satellite wet mass 1000 kg and Isp 220 s for hydrazine fuel estimates unless the input states otherwise. State the assumption inside the RATIONALE section if it materially affects the plan.
@@ -655,6 +656,14 @@ export interface ScreeningCloseApproach {
   /** True if |R|,|I|,|C| all fall inside the NASA ISS keep-out box. */
   insideKeepOutBox: boolean;
   severity: ThreatLevel;
+  /**
+   * Session 6 — ECI (TEME) states of both objects AT TCA, km and km/s,
+   * so the Avoidance Burn Planner can re-evaluate Pc after a
+   * hypothetical burn without re-running the screen. Filled by
+   * /api/screen; NOT forwarded to Claude (the assess route drops them).
+   */
+  targetStateEci?: { position: [number, number, number]; velocity: [number, number, number] };
+  secondaryStateEci?: { position: [number, number, number]; velocity: [number, number, number] };
 }
 
 /** Every assumption the screener bakes in — shown verbatim in the UI. */

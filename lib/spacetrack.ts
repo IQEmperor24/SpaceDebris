@@ -49,6 +49,8 @@ const FETCH_TIMEOUT_MS = 15_000;
 const TLE_CACHE_TTL_MS = 10 * 60 * 1000;
 /** Shared cdm_public cache TTL — matches /api/conjunctions. */
 const CDM_CACHE_TTL_MS = 60 * 1000;
+/** Single-object lookups (searchTLE): element sets change a few times a day. */
+const SEARCH_CACHE_TTL_MS = 5 * 60 * 1000;
 /** All CDM consumers share ONE pull of this many soonest rows. */
 const CDM_SHARED_LIMIT = 100;
 
@@ -82,6 +84,7 @@ export interface SpaceTrackCDM {
   CDM_ID: string;
   CREATED: string;
   TCA: string;
+  /** Minimum range at TCA in METRES (CCSDS CDM convention) — convert with cdmMissDistanceKm(). */
   MIN_RNG: string;
   PC: string;
   SAT_1_ID: string;
@@ -98,6 +101,125 @@ let sessionCookie: string | null = null;
 let cookieFetchedAt = 0;
 /** Shared in-flight login so concurrent cold callers log in once. */
 let loginInFlight: Promise<string> | null = null;
+
+/* ------------------------------------------------------------
+   Request accounting (Session 6 — System Telemetry panel).
+   Every HTTP call to Space-Track (login + query) is timestamped so
+   /api/health can report live budget use against the published
+   30/min and 300/hr limits. Per serverless instance, like the caches.
+   ------------------------------------------------------------ */
+
+export const SPACE_TRACK_HOURLY_LIMIT = 300;
+export const SPACE_TRACK_PER_MINUTE_LIMIT = 30;
+/**
+ * Soft per-instance budget enforced BEFORE every request (login or
+ * query), with headroom under the published limits. The counters above
+ * only measured; without this, one client in the expensive tier (10/min
+ * of distinct /api/debris?search= or /api/screen?target= lookups) could
+ * push the single shared account past 300/hr and get it throttled or
+ * suspended — which would take every panel OFFLINE. Per instance, like
+ * everything else here, so it is a brake, not an account-wide guarantee.
+ */
+export const SPACE_TRACK_SOFT_PER_MINUTE_LIMIT = 25;
+export const SPACE_TRACK_SOFT_HOURLY_LIMIT = 250;
+const REQUEST_LOG_WINDOW_MS = 60 * 60 * 1000;
+const requestLog: number[] = [];
+let lastLoginAt: number | null = null;
+let sharedCacheHits = 0;
+let sharedCacheMisses = 0;
+let budgetRefusals = 0;
+
+/** Thrown locally (no HTTP call) when the soft budget is spent. */
+export class SpaceTrackBudgetError extends Error {
+  readonly retryAfterSeconds: number;
+  constructor(message: string, retryAfterSeconds: number) {
+    super(message);
+    this.name = "SpaceTrackBudgetError";
+    this.retryAfterSeconds = retryAfterSeconds;
+  }
+}
+
+function pruneRequestLog(now: number): void {
+  while (requestLog.length > 0 && requestLog[0] < now - REQUEST_LOG_WINDOW_MS) {
+    requestLog.shift();
+  }
+}
+
+function requestsInLastMinute(now: number): number {
+  let n = 0;
+  for (let i = requestLog.length - 1; i >= 0 && requestLog[i] >= now - 60_000; i--) n++;
+  return n;
+}
+
+function enforceBudget(): void {
+  const now = Date.now();
+  pruneRequestLog(now);
+  const lastMinute = requestsInLastMinute(now);
+  if (lastMinute >= SPACE_TRACK_SOFT_PER_MINUTE_LIMIT) {
+    const oldestInMinute = requestLog[requestLog.length - lastMinute];
+    const retry = Math.max(1, Math.ceil((oldestInMinute + 60_000 - now) / 1000));
+    budgetRefusals++;
+    throw new SpaceTrackBudgetError(
+      `Space-Track request budget exhausted on this instance: ${lastMinute} requests in the last minute ` +
+        `(soft limit ${SPACE_TRACK_SOFT_PER_MINUTE_LIMIT}/min under the published ${SPACE_TRACK_PER_MINUTE_LIMIT}/min) — retry in ${retry} s`,
+      retry
+    );
+  }
+  if (requestLog.length >= SPACE_TRACK_SOFT_HOURLY_LIMIT) {
+    const retry = Math.max(1, Math.ceil((requestLog[0] + REQUEST_LOG_WINDOW_MS - now) / 1000));
+    budgetRefusals++;
+    throw new SpaceTrackBudgetError(
+      `Space-Track request budget exhausted on this instance: ${requestLog.length} requests in the last hour ` +
+        `(soft limit ${SPACE_TRACK_SOFT_HOURLY_LIMIT}/hr under the published ${SPACE_TRACK_HOURLY_LIMIT}/hr) — retry in ${retry} s`,
+      retry
+    );
+  }
+}
+
+function recordRequest(): void {
+  const now = Date.now();
+  requestLog.push(now);
+  pruneRequestLog(now);
+}
+
+export interface SpaceTrackStats {
+  requestsLastHour: number;
+  requestsLastMinute: number;
+  hourlyLimit: number;
+  perMinuteLimit: number;
+  lastLoginAt: string | null;
+  sessionCookieAgeSeconds: number | null;
+  sharedCacheEntries: number;
+  sharedCacheHits: number;
+  sharedCacheMisses: number;
+  /** Soft per-instance budget (SPACE_TRACK_SOFT_*) and how often it refused a request. */
+  softPerMinuteLimit: number;
+  softHourlyLimit: number;
+  budgetRefusals: number;
+}
+
+/** Live Space-Track request budget for this instance (never throws). */
+export function getSpaceTrackStats(): SpaceTrackStats {
+  const now = Date.now();
+  pruneRequestLog(now);
+  return {
+    requestsLastHour: requestLog.length,
+    requestsLastMinute: requestsInLastMinute(now),
+    hourlyLimit: SPACE_TRACK_HOURLY_LIMIT,
+    perMinuteLimit: SPACE_TRACK_PER_MINUTE_LIMIT,
+    lastLoginAt: lastLoginAt === null ? null : new Date(lastLoginAt).toISOString(),
+    sessionCookieAgeSeconds:
+      sessionCookie && cookieFetchedAt > 0
+        ? Math.round((now - cookieFetchedAt) / 1000)
+        : null,
+    sharedCacheEntries: sharedCache.size,
+    sharedCacheHits,
+    sharedCacheMisses,
+    softPerMinuteLimit: SPACE_TRACK_SOFT_PER_MINUTE_LIMIT,
+    softHourlyLimit: SPACE_TRACK_SOFT_HOURLY_LIMIT,
+    budgetRefusals,
+  };
+}
 
 /** Read + validate credentials from the environment. */
 function getCredentials(): { identity: string; password: string } {
@@ -143,6 +265,7 @@ async function login(): Promise<string> {
   // "chocolatechip=...; Path=/; ..." -> keep only "chocolatechip=..."
   sessionCookie = setCookie.split(";")[0];
   cookieFetchedAt = Date.now();
+  lastLoginAt = cookieFetchedAt;
   return sessionCookie;
 }
 
@@ -170,6 +293,8 @@ async function fetchWithTimeout(
   url: string,
   init: RequestInit
 ): Promise<Response> {
+  enforceBudget(); // throws SpaceTrackBudgetError locally — nothing is sent
+  recordRequest();
   try {
     return await fetch(url, {
       ...init,
@@ -200,6 +325,20 @@ interface SharedCacheEntry<T> {
 
 const sharedCache = new Map<string, SharedCacheEntry<unknown>>();
 const sharedInFlight = new Map<string, Promise<unknown>>();
+/**
+ * Upper bound on cached datasets (gp:<n> variants, cdm, search:<query>)
+ * so hostile `limit` / `search` values cannot grow memory without bound;
+ * the oldest entry is evicted first.
+ */
+const SHARED_CACHE_MAX_ENTRIES = 64;
+
+function setShared(key: string, entry: SharedCacheEntry<unknown>): void {
+  if (!sharedCache.has(key) && sharedCache.size >= SHARED_CACHE_MAX_ENTRIES) {
+    const oldest = sharedCache.keys().next().value;
+    if (oldest !== undefined) sharedCache.delete(oldest);
+  }
+  sharedCache.set(key, entry);
+}
 
 async function sharedFetch<T>(
   key: string,
@@ -208,18 +347,21 @@ async function sharedFetch<T>(
 ): Promise<T> {
   const hit = sharedCache.get(key);
   if (hit && hit.expires > Date.now()) {
+    sharedCacheHits++;
     return hit.data as T;
   }
   if (hit) sharedCache.delete(key);
 
   const pending = sharedInFlight.get(key);
   if (pending) {
+    sharedCacheHits++;
     return pending as Promise<T>;
   }
+  sharedCacheMisses++;
 
   const request = loader()
     .then((data) => {
-      sharedCache.set(key, { data, expires: Date.now() + ttlMs });
+      setShared(key, { data, expires: Date.now() + ttlMs });
       return data;
     })
     .finally(() => {
@@ -306,9 +448,20 @@ export async function probeGp(): Promise<SpaceTrackTLE[]> {
  * Numeric query -> NORAD_CAT_ID; otherwise wildcard name match (~~).
  * Returns null if nothing matches.
  */
+/**
+ * Bare-name aliases resolved BEFORE the wildcard name search. A plain
+ * "ISS" would otherwise match whichever object whose name contains "ISS"
+ * has the newest epoch (ISS (NAUKA), an ISS DEB fragment, SWISSCUBE…),
+ * so /api/analyze, /api/debris?search and /api/screen would disagree on
+ * what "ISS" means. Values are NORAD IDs; 25544 = ISS_NORAD_ID in
+ * lib/orbital (not imported, so this module stays dependency-free).
+ */
+const SEARCH_ALIASES: ReadonlyMap<string, string> = new Map([["iss", "25544"]]);
+
 export async function searchTLE(query: string): Promise<SpaceTrackTLE | null> {
-  const trimmed = query.trim();
-  if (!trimmed) return null;
+  const raw = query.trim();
+  if (!raw) return null;
+  const trimmed = SEARCH_ALIASES.get(raw.toLowerCase()) ?? raw;
 
   const isNoradId = /^\d+$/.test(trimmed);
   const predicate = isNoradId
@@ -316,7 +469,14 @@ export async function searchTLE(query: string): Promise<SpaceTrackTLE | null> {
     : `OBJECT_NAME/~~${encodeURIComponent(trimmed)}`;
 
   const path = `class/gp/${predicate}/orderby/EPOCH%20desc/limit/1/format/json`;
-  const results = await spaceTrackGet<SpaceTrackTLE[]>(path);
+  // Shared 5-min cache + in-flight dedupe per query: the ISS console, the
+  // risk scorer, the screener and the lifetime panel resolve the same few
+  // objects, and concurrent cold callers now share ONE lookup.
+  const results = await sharedFetch<SpaceTrackTLE[]>(
+    `search:${trimmed.toLowerCase()}`,
+    SEARCH_CACHE_TTL_MS,
+    () => spaceTrackGet<SpaceTrackTLE[]>(path)
+  );
   return results.length > 0 ? results[0] : null;
 }
 

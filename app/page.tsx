@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import Link from "next/link";
 
 /* ============================================================
    SpaceDebris — Main Dashboard (3 panels + fleet intelligence)
@@ -31,6 +32,17 @@ import dynamic from "next/dynamic";
    Panels 2-6 are full-width sections stacked below Fleet
    Intelligence; none of them share state with the original four
    panels, so the hackathon-proven layout above is untouched.
+
+   Session 6 — SpaceX-recruiter upgrade. Seven more features:
+     1. Starlink Constellation Monitor      (StarlinkMonitor)
+     2. Avoidance Burn Planner              (AvoidancePlanner)
+     3. Launch COLA Screening               (LaunchCola)
+     4. Orbital Lifetime & Disposal         (DisposalCompliance)
+     5. Public API: OpenAPI + /docs + limits (app/docs, middleware)
+     6. Engineering rigor: tests + CI + README (repo level)
+     7. System Telemetry                    (SystemTelemetry)
+   With 12 panels on one page, a jump-nav strip sits under the
+   header; every full-width section carries an id anchor.
    ============================================================ */
 
 const OrbitalMap = dynamic(() => import("@/components/OrbitalMap"), {
@@ -118,6 +130,51 @@ const SpaceWeather = dynamic(() => import("@/components/SpaceWeather"), {
   loading: () => <PanelPlaceholder label="Loading space weather…" />,
 });
 
+/* ---- Session 6 panels ---- */
+
+const StarlinkMonitor = dynamic(() => import("@/components/StarlinkMonitor"), {
+  ssr: false,
+  loading: () => <PanelPlaceholder label="Loading Starlink constellation monitor…" />,
+});
+
+const AvoidancePlanner = dynamic(() => import("@/components/AvoidancePlanner"), {
+  ssr: false,
+  loading: () => <PanelPlaceholder label="Loading autonomous avoidance planner…" />,
+});
+
+const LaunchCola = dynamic(() => import("@/components/LaunchCola"), {
+  ssr: false,
+  loading: () => <PanelPlaceholder label="Loading launch COLA screening…" />,
+});
+
+const DisposalCompliance = dynamic(
+  () => import("@/components/DisposalCompliance"),
+  {
+    ssr: false,
+    loading: () => <PanelPlaceholder label="Loading orbital lifetime model…" />,
+  }
+);
+
+const SystemTelemetry = dynamic(() => import("@/components/SystemTelemetry"), {
+  ssr: false,
+  loading: () => <PanelPlaceholder label="Loading system telemetry…" />,
+});
+
+/** Jump-nav entries: id → label (ids match the section anchors below). */
+const PANEL_NAV: ReadonlyArray<{ id: string; label: string }> = [
+  { id: "fleet", label: "Fleet" },
+  { id: "iss", label: "ISS console" },
+  { id: "screener", label: "Screening" },
+  { id: "avoidance", label: "Avoidance planner" },
+  { id: "cola", label: "Launch COLA" },
+  { id: "starlink", label: "Starlink" },
+  { id: "disposal", label: "Lifetime" },
+  { id: "density", label: "Density" },
+  { id: "fragmentation", label: "Fragmentation" },
+  { id: "spaceweather", label: "Space weather" },
+  { id: "telemetry", label: "Telemetry" },
+];
+
 export default function DashboardPage() {
   return (
     <main className="scanlines min-h-screen w-full bg-space px-4 py-4 md:px-6 md:py-6">
@@ -142,13 +199,38 @@ export default function DashboardPage() {
         <MissionStatusBar />
       </header>
 
+      {/* ---------- Jump nav (Session 6) ---------- */}
+      <nav
+        aria-label="Panels"
+        data-testid="panel-nav"
+        className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-0 font-mono text-[0.6rem] uppercase tracking-widest text-text-secondary md:mb-6"
+      >
+        {PANEL_NAV.map((p) => (
+          <a
+            key={p.id}
+            href={`#${p.id}`}
+            className="inline-block py-1.5 transition-colors hover:text-safe focus-visible:text-safe"
+          >
+            {p.label}
+          </a>
+        ))}
+        <span className="text-text-muted">|</span>
+        <Link href="/docs" className="inline-block py-1.5 text-safe hover:underline" data-testid="nav-api-docs">
+          API docs →
+        </Link>
+      </nav>
+
       {/* ---------- Panel grid ----------
+          Height budget: 100vh minus header (60 px) + jump nav (~50 px incl.
+          its 12 px tap-target padding) + paddings/margins (~54 px) ≈ 10.25rem,
+          so the hero grid still ends above the fold at 1440×900 (was 7rem
+          before the Session 6 nav).
           Large screens: 3 columns × 2 rows.
             - Panel 1 (OrbitalMap): spans 2 cols × 2 rows (the hero).
             - Panel 2 (RiskScorer): top-right.
             - Panel 3 (AlertFeed): bottom-right.
           Small screens: single column, stacked. */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3 lg:grid-rows-2 lg:gap-6 lg:h-[calc(100vh-7rem)]">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3 lg:grid-rows-2 lg:gap-6 lg:h-[calc(100vh-10.25rem)]">
         {/* Panel 1 — Live 3D Orbital Map */}
         <section className="glass-card relative overflow-hidden lg:col-span-2 lg:row-span-2 min-h-[360px]">
           <PanelHeading>3D ORBITAL MAP</PanelHeading>
@@ -175,7 +257,7 @@ export default function DashboardPage() {
       </div>
 
       {/* ---------- Panel 4 — Fleet Intelligence (full width, below fold) ---------- */}
-      <div className="mt-4 md:mt-6">
+      <div id="fleet" className="mt-4 scroll-mt-4 md:mt-6">
         <FleetDashboard />
       </div>
 
@@ -184,28 +266,55 @@ export default function DashboardPage() {
           own data fetching, so they can be reordered or removed freely. */}
 
       {/* Feature 3 — ISS TOPO Console */}
-      <div className="mt-4 md:mt-6">
+      <div id="iss" className="mt-4 scroll-mt-4 md:mt-6">
         <IssConsole />
       </div>
 
       {/* Feature 2 — SGP4 Conjunction Screening Engine (+ AI CA memo) */}
-      <div className="mt-4 md:mt-6">
+      <div id="screener" className="mt-4 scroll-mt-4 md:mt-6">
         <ConjunctionScreener />
       </div>
 
+      {/* ---------- Session 6 — SpaceX upgrade ---------- */}
+
+      {/* S6 Feature 2 — Avoidance Burn Planner (reuses /api/screen) */}
+      <div id="avoidance" className="mt-4 scroll-mt-4 md:mt-6">
+        <AvoidancePlanner />
+      </div>
+
+      {/* S6 Feature 3 — Launch COLA Screening */}
+      <div id="cola" className="mt-4 scroll-mt-4 md:mt-6">
+        <LaunchCola />
+      </div>
+
+      {/* S6 Feature 1 — Starlink Constellation Monitor */}
+      <div id="starlink" className="mt-4 scroll-mt-4 md:mt-6">
+        <StarlinkMonitor />
+      </div>
+
+      {/* S6 Feature 4 — Orbital Lifetime & Disposal Compliance */}
+      <div id="disposal" className="mt-4 scroll-mt-4 md:mt-6">
+        <DisposalCompliance />
+      </div>
+
       {/* Feature 5 — Orbital Density Profile */}
-      <div className="mt-4 md:mt-6">
+      <div id="density" className="mt-4 scroll-mt-4 md:mt-6">
         <DensityProfile />
       </div>
 
       {/* Feature 4 — Fragmentation Family Tracker */}
-      <div className="mt-4 md:mt-6">
+      <div id="fragmentation" className="mt-4 scroll-mt-4 md:mt-6">
         <FragmentationTracker />
       </div>
 
       {/* Feature 6 — Space Weather + Reentry Watch */}
-      <div className="mt-4 md:mt-6">
+      <div id="spaceweather" className="mt-4 scroll-mt-4 md:mt-6">
         <SpaceWeather />
+      </div>
+
+      {/* S6 Feature 7 — System Telemetry (last: it reports on everything above) */}
+      <div id="telemetry" className="mt-4 scroll-mt-4 md:mt-6">
+        <SystemTelemetry />
       </div>
     </main>
   );

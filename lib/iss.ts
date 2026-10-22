@@ -8,6 +8,7 @@ import {
   geodeticFromEci,
   lookAngles,
   propagateAt,
+  cdmMissDistanceKm,
 } from "@/lib/orbital";
 
 /* ============================================================
@@ -91,7 +92,7 @@ export interface IssCdmAssessment {
   level: IssCaLevel;
   /** Probability of collision from the CDM, or null if not finite. */
   pc: number | null;
-  /** Miss distance (MIN_RNG, km) from the CDM, or null if not finite. */
+  /** Miss distance in km (MIN_RNG is metres in cdm_public), or null if not finite. */
   missKm: number | null;
   /** The non-ISS object in the message. */
   otherName: string;
@@ -464,7 +465,7 @@ function finiteOrNull(raw: string | null | undefined): number | null {
  */
 export function assessIssCdm(cdm: SpaceTrackCDM): IssCdmAssessment {
   const pc = finiteOrNull(cdm.PC);
-  const missKm = finiteOrNull(cdm.MIN_RNG);
+  const missKm = cdmMissDistanceKm(cdm.MIN_RNG); // MIN_RNG is metres
 
   let level: IssCaLevel = "GREEN";
   if (pc !== null && pc >= ISS_PC_RED_THRESHOLD) level = "RED";

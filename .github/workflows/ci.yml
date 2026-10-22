@@ -1,0 +1,53 @@
+# CI — typecheck, unit tests, production build.
+#
+# No secrets are configured or needed:
+#   - The Anthropic client (lib/anthropic.ts) is created lazily on the first
+#     Claude request, so importing it at build time never reads a key.
+#   - Space-Track and NOAA SWPC are only called from route handlers at request
+#     time (the data routes are force-dynamic), so `next build` never contacts
+#     them and needs no SPACETRACK_* variables.
+#   - The test suite replaces global fetch with a stub that throws
+#     (tests/register.mjs), so no test can reach the network.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: typecheck · test · build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Node.js (version from .nvmrc)
+        uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck (tsc --noEmit, strict)
+        run: npm run typecheck
+
+      - name: Unit tests (node:test, zero dependencies)
+        run: npm test
+
+      - name: Production build
+        run: npm run build

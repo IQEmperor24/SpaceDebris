@@ -5,7 +5,6 @@ import {
   SCREENING_WINDOW_OPTIONS,
   screenTarget,
 } from "@/lib/screening";
-import { ISS_NORAD_ID } from "@/lib/orbital";
 import type { ScreeningResult } from "@/lib/prompts";
 
 /* ============================================================
@@ -93,12 +92,6 @@ const MIN_COMPUTE_BUDGET_MS = 2000;
  * A Map (not an object literal) so user input such as "constructor" or
  * "__proto__" can never resolve through Object.prototype.
  */
-const TARGET_ALIASES: ReadonlyMap<string, string> = new Map([["iss", ISS_NORAD_ID]]);
-
-function resolveTargetQuery(target: string): string {
-  return TARGET_ALIASES.get(target.toLowerCase()) ?? target;
-}
-
 interface CacheEntry {
   data: ScreeningResult;
   expires: number;
@@ -175,7 +168,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
 
   try {
     const [targetTle, sample] = await Promise.all([
-      searchTLE(resolveTargetQuery(target)),
+      searchTLE(target), // bare "ISS" → NORAD 25544 inside searchTLE (shared with /api/debris?search and /api/analyze)
       fetchTLEs(DEBRIS_SAMPLE),
     ]);
 

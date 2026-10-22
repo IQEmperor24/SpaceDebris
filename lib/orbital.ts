@@ -72,6 +72,15 @@ export const ISS_PC_RED_THRESHOLD = 1e-4;
 export const ISS_PC_YELLOW_THRESHOLD = 1e-5;
 
 /**
+ * SpaceX Starlink autonomous collision-avoidance trigger: the
+ * constellation maneuvers when Pc exceeds 3e-7 — more than 300× below
+ * the industry-standard 1e-4 (SpaceX semiannual Starlink report to the
+ * FCC, 1 July 2026, covering Dec 2025 – May 2026). Earlier filings
+ * (2022-23) cited 1e-5; the trigger has only ever been tightened.
+ */
+export const STARLINK_PC_MANEUVER_THRESHOLD = 3e-7;
+
+/**
  * NASA ISS screening "pizza box" keep-out volume, half-widths in km
  * (radial × in-track × cross-track). Any predicted penetration of
  * this box triggers detailed CA analysis.
@@ -502,6 +511,32 @@ export function toRic(vec: Vec3, frame: RicFrame): RicVector {
    ------------------------------------------------------------ */
 
 /**
+ * Miss distance of a Space-Track cdm_public row in KILOMETRES.
+ *
+ * MIN_RNG is in METRES (the CCSDS CDM MISS_DISTANCE convention): a
+ * public CDM with PC ≈ 1e-4 carries MIN_RNG ≈ 400, i.e. 400 m — a
+ * 400 km miss could never have that probability. Every consumer that
+ * wants km (alert feed, fleet thresholds, ISS console, prompts) MUST
+ * convert through this helper so the unit lives in exactly one place.
+ * Returns null when the field is missing or not a finite number.
+ */
+export function cdmMissDistanceKm(
+  minRng: string | number | null | undefined
+): number | null {
+  if (minRng === null || minRng === undefined) return null;
+  const metres = typeof minRng === "number" ? minRng : parseFloat(minRng);
+  if (!Number.isFinite(metres) || metres < 0) return null;
+  return metres / 1000;
+}
+
+/** "0.388" style km string for display / prompt use; raw field if unparseable. */
+export function formatCdmMissKm(minRng: string | number | null | undefined): string {
+  const km = cdmMissDistanceKm(minRng);
+  if (km === null) return minRng === null || minRng === undefined ? "n/a" : String(minRng);
+  return km.toFixed(3);
+}
+
+/**
  * Mean altitude (km) from the gp APOAPSIS / PERIAPSIS strings.
  * Same semantics as app/api/fleet + app/api/analyze: NaN if invalid.
  */
@@ -717,6 +752,205 @@ function quadForm(x: Vec3, m: Mat3, y: Vec3): number {
     }
   }
   return s;
+}
+
+/* ------------------------------------------------------------
+   Ground sites, synthetic orbits and two-body propagation
+   (Session 6 — launch COLA screening, avoidance planning)
+   ------------------------------------------------------------ */
+
+/** ECI (TEME-equivalent) position of a ground site at an instant. */
+export function siteEci(site: ObserverSite, date: Date): Vec3 {
+  const ecf = satellite.geodeticToEcf({
+    latitude: degToRad(site.latitudeDeg),
+    longitude: degToRad(site.longitudeDeg),
+    height: site.heightKm,
+  });
+  const eci = satellite.ecfToEci(ecf, gmstRadians(date));
+  return [eci.x, eci.y, eci.z];
+}
+
+export interface CircularOrbitParams {
+  altitudeKm: number; // above EARTH_EQUATORIAL_RADIUS_KM
+  inclinationDeg: number;
+  raanDeg: number;
+  /** Argument of latitude (angle from the ascending node), degrees. */
+  argLatDeg: number;
+}
+
+/** ECI state of a circular orbit from classical angles (two-body). */
+export function circularOrbitState(p: CircularOrbitParams): StateVector {
+  const r = EARTH_EQUATORIAL_RADIUS_KM + p.altitudeKm;
+  const v = Math.sqrt(MU_EARTH_KM3_S2 / r);
+  const i = degToRad(p.inclinationDeg);
+  const O = degToRad(p.raanDeg);
+  const u = degToRad(p.argLatDeg);
+  const cO = Math.cos(O), sO = Math.sin(O);
+  const ci = Math.cos(i), si = Math.sin(i);
+  const cu = Math.cos(u), su = Math.sin(u);
+  // Perifocal (x along node, y 90° ahead in-plane) -> ECI rotation.
+  const position: Vec3 = [
+    r * (cO * cu - sO * su * ci),
+    r * (sO * cu + cO * su * ci),
+    r * (su * si),
+  ];
+  const velocity: Vec3 = [
+    v * (-cO * su - sO * cu * ci),
+    v * (-sO * su + cO * cu * ci),
+    v * (cu * si),
+  ];
+  return { position, velocity };
+}
+
+/**
+ * Right ascension of the ascending node for an orbit of inclination
+ * `inclinationDeg` whose plane contains the given ECI position (a
+ * launch site at launch time), choosing the ASCENDING (northbound) pass:
+ * north-east for prograde inclinations, north-west for retrograde ones
+ * (e.g. SSO at 97.6°). Returns null when the site latitude exceeds
+ * the inclination (no such plane exists).
+ */
+export function raanThroughPosition(
+  positionEci: Vec3,
+  inclinationDeg: number
+): number | null {
+  const [x, y, z] = positionEci;
+  const rxy = Math.hypot(x, y);
+  const alpha = Math.atan2(y, x);
+  const delta = Math.atan2(z, rxy);
+  const i = degToRad(inclinationDeg);
+  if (Math.abs(Math.sin(i)) < 1e-9) return null;
+  const s = -(Math.cos(i) * Math.tan(delta)) / Math.sin(i);
+  if (!Number.isFinite(s) || Math.abs(s) > 1) return null;
+  // Plane normal n = (sin i sin O, -sin i cos O, cos i); n·r = 0 gives
+  // sin(O - alpha) = s. The ascending-pass solution is O = alpha + asin(s)
+  // ... when the site is north of the node and moving northbound.
+  return normalizeDeg360(radToDeg(alpha + Math.asin(s)));
+}
+
+/** Argument of latitude of a position (angle from the node), degrees. */
+export function argumentOfLatitude(
+  positionEci: Vec3,
+  inclinationDeg: number,
+  raanDeg: number
+): number {
+  const O = degToRad(raanDeg);
+  const i = degToRad(inclinationDeg);
+  const node: Vec3 = [Math.cos(O), Math.sin(O), 0];
+  // In-plane direction 90° ahead of the node.
+  const ahead: Vec3 = [-Math.sin(O) * Math.cos(i), Math.cos(O) * Math.cos(i), Math.sin(i)];
+  const r = vUnit(positionEci);
+  return normalizeDeg360(radToDeg(Math.atan2(vDot(r, ahead), vDot(r, node))));
+}
+
+/** Stumpff functions for universal-variable Kepler propagation. */
+function stumpff(psi: number): { c2: number; c3: number } {
+  if (psi > 1e-6) {
+    const sq = Math.sqrt(psi);
+    return { c2: (1 - Math.cos(sq)) / psi, c3: (sq - Math.sin(sq)) / Math.sqrt(psi * psi * psi) };
+  }
+  if (psi < -1e-6) {
+    const sq = Math.sqrt(-psi);
+    return {
+      c2: (1 - Math.cosh(sq)) / psi,
+      c3: (Math.sinh(sq) - sq) / Math.sqrt(-psi * psi * psi),
+    };
+  }
+  return { c2: 0.5, c3: 1 / 6 };
+}
+
+/**
+ * Two-body (Keplerian) propagation by `dtSeconds` using universal
+ * variables (Vallado, Algorithm 8). Valid for any conic. Returns null
+ * if the solver fails to converge (degenerate state).
+ */
+export function twoBodyPropagate(state: StateVector, dtSeconds: number): StateVector | null {
+  const mu = MU_EARTH_KM3_S2;
+  const r0v = state.position;
+  const v0v = state.velocity;
+  const r0 = vNorm(r0v);
+  const v0 = vNorm(v0v);
+  if (!(r0 > 0) || !Number.isFinite(dtSeconds)) return null;
+  if (dtSeconds === 0) return { position: [...r0v] as Vec3, velocity: [...v0v] as Vec3 };
+  const rdotv = vDot(r0v, v0v);
+  const sqrtMu = Math.sqrt(mu);
+  const alpha = -(v0 * v0) / mu + 2 / r0; // 1/a
+
+  let chi: number;
+  if (alpha > 1e-6) {
+    chi = sqrtMu * dtSeconds * alpha;
+  } else if (Math.abs(alpha) < 1e-6) {
+    const h = vNorm(vCross(r0v, v0v));
+    const pp = (h * h) / mu;
+    const s = 0.5 * Math.atan(1 / ((3 * Math.sqrt(mu / (pp * pp * pp))) * dtSeconds));
+    const w = Math.atan(Math.cbrt(Math.tan(s)));
+    chi = Math.sqrt(pp) * 2 * (1 / Math.tan(2 * w));
+  } else {
+    const a = 1 / alpha;
+    const sign = dtSeconds >= 0 ? 1 : -1;
+    chi =
+      sign *
+      Math.sqrt(-a) *
+      Math.log(
+        (-2 * mu * alpha * dtSeconds) /
+          (rdotv + sign * Math.sqrt(-mu * a) * (1 - r0 * alpha))
+      );
+  }
+
+  let r = r0;
+  let psi = 0;
+  let c2 = 0.5;
+  let c3 = 1 / 6;
+  let converged = false;
+  for (let iter = 0; iter < 60; iter++) {
+    psi = chi * chi * alpha;
+    ({ c2, c3 } = stumpff(psi));
+    r =
+      chi * chi * c2 +
+      (rdotv / sqrtMu) * chi * (1 - psi * c3) +
+      r0 * (1 - psi * c2);
+    const chiNew =
+      chi +
+      (sqrtMu * dtSeconds -
+        chi * chi * chi * c3 -
+        (rdotv / sqrtMu) * chi * chi * c2 -
+        r0 * chi * (1 - psi * c3)) /
+        r;
+    if (!Number.isFinite(chiNew)) return null;
+    if (Math.abs(chiNew - chi) < 1e-8) {
+      chi = chiNew;
+      converged = true;
+      break;
+    }
+    chi = chiNew;
+  }
+  if (!converged) return null;
+  psi = chi * chi * alpha;
+  ({ c2, c3 } = stumpff(psi));
+  r = chi * chi * c2 + (rdotv / sqrtMu) * chi * (1 - psi * c3) + r0 * (1 - psi * c2);
+
+  const f = 1 - (chi * chi / r0) * c2;
+  const g = dtSeconds - (chi * chi * chi / sqrtMu) * c3;
+  const gdot = 1 - (chi * chi / r) * c2;
+  const fdot = (sqrtMu / (r * r0)) * chi * (psi * c3 - 1);
+
+  const position: Vec3 = [
+    f * r0v[0] + g * v0v[0],
+    f * r0v[1] + g * v0v[1],
+    f * r0v[2] + g * v0v[2],
+  ];
+  const velocity: Vec3 = [
+    fdot * r0v[0] + gdot * v0v[0],
+    fdot * r0v[1] + gdot * v0v[1],
+    fdot * r0v[2] + gdot * v0v[2],
+  ];
+  if (!position.every(Number.isFinite) || !velocity.every(Number.isFinite)) return null;
+  return { position, velocity };
+}
+
+/** Mean motion (rad/s) of a circular orbit at the given geocentric radius. */
+export function meanMotionRadPerSec(radiusKm: number): number {
+  return Math.sqrt(MU_EARTH_KM3_S2 / (radiusKm * radiusKm * radiusKm));
 }
 
 /* ------------------------------------------------------------
